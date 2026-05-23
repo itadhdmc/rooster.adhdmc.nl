@@ -1,3 +1,8 @@
+# MIME types voor moderne JavaScript modules
+AddType application/javascript .js .mjs
+AddType text/css .css
+AddType image/svg+xml .svg
+
 # React Router SPA — stuur alle routes naar index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On
