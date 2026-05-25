@@ -147,9 +147,9 @@ export default function RoosterBeheer() {
 
       {/* Calendar grid */}
       <div className="card overflow-hidden">
-        <div className="grid grid-cols-5 border-b border-gray-100 bg-surface">
-          {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag'].map((d, i) => (
-            <div key={d} className={`py-2 text-center text-xs font-bold text-gray-400 ${i < 4 ? 'border-r border-gray-100' : ''}`}>
+        <div className="grid grid-cols-6 border-b border-gray-100 bg-surface">
+          {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'].map((d, i) => (
+            <div key={d} className={`py-2 text-center text-xs font-bold text-gray-400 ${i < 5 ? 'border-r border-gray-100' : ''}`}>
               <span className="hidden sm:inline">{d}</span>
               <span className="sm:hidden">{d.slice(0, 2)}</span>
             </div>
@@ -157,7 +157,7 @@ export default function RoosterBeheer() {
         </div>
         <div className="divide-y divide-gray-100">
           {weeks.map((week, wi) => (
-            <div key={wi} className="grid grid-cols-5 divide-x divide-gray-100">
+            <div key={wi} className="grid grid-cols-6 divide-x divide-gray-100">
               {week.map((day, di) => {
                 if (!day) return <div key={di} className="p-2 sm:p-3 bg-gray-50/50 min-h-[80px]" />
                 const iso = dateToISO(day)

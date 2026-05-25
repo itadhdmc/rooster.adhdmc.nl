@@ -46,7 +46,7 @@ export function getWeeksInMonth(year: number, month: number): (Date | null)[][] 
   const result: (Date | null)[][] = []
   while (weekStart <= lastDay) {
     const week: (Date | null)[] = []
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       const d = new Date(weekStart)
       d.setDate(weekStart.getDate() + i)
       week.push(d.getMonth() === month - 1 ? d : null)

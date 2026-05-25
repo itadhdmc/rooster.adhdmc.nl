@@ -11,7 +11,7 @@ function getWeekDays(weekOffset: number): Date[] {
   const monday = new Date(now)
   monday.setDate(now.getDate() + diffToMonday + weekOffset * 7)
   monday.setHours(0, 0, 0, 0)
-  return Array.from({ length: 5 }, (_, i) => {
+  return Array.from({ length: 6 }, (_, i) => {
     const d = new Date(monday)
     d.setDate(monday.getDate() + i)
     return d
@@ -99,7 +99,7 @@ export default function Beschikbaarheid() {
   const myApprovedCount = myAssignments.filter(a =>
     a.status === 'approved' && shifts.some(s => s.id === a.shift_id)).length
 
-  const weekLabel = `${weekDays[0].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${weekDays[4].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`
+  const weekLabel = `${weekDays[0].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${weekDays[5].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`
 
   if (loading) return <Spinner />
 
@@ -198,7 +198,7 @@ export default function Beschikbaarheid() {
       {/* Weekly grid */}
       <div className="card overflow-hidden">
         {/* Day headers */}
-        <div className="grid grid-cols-6 bg-gray-50/60 border-b border-gray-100">
+        <div className="grid grid-cols-7 bg-gray-50/60 border-b border-gray-100">
           <div className="py-3 border-r border-gray-100" />
           {weekDays.map(day => {
             const iso = dateToISO(day)
@@ -218,7 +218,7 @@ export default function Beschikbaarheid() {
 
         {/* Shift rows: ochtend + middag */}
         {(['ochtend', 'middag'] as const).map((shiftType, rowIdx) => (
-          <div key={shiftType} className={`grid grid-cols-6 ${rowIdx === 0 ? 'border-b border-gray-100' : ''}`}>
+          <div key={shiftType} className={`grid grid-cols-7 ${rowIdx === 0 ? 'border-b border-gray-100' : ''}`}>
             {/* Row label */}
             <div className="flex items-center justify-center py-6 px-2 border-r border-gray-100 bg-gray-50/30">
               <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
