@@ -20,7 +20,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!profile) return
-    loadDashboard()
+    loadDashboard().catch(() => setLoading(false))
   }, [profile])
 
   async function loadDashboard() {
@@ -32,8 +32,9 @@ export default function Dashboard() {
       supabase
         .from('roster_periods')
         .select('*')
-        .or(`and(year.eq.${year},month.eq.${month}),and(year.eq.${year},month.eq.${month + 1})`)
-        .order('year').order('month'),
+        .gte('month', month)
+        .eq('year', year)
+        .order('month'),
       supabase
         .from('assignments')
         .select('*, shifts(*)')
