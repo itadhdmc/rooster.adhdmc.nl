@@ -6,10 +6,31 @@ export default function AuthCallback() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate('/', { replace: true })
-      else navigate('/login', { replace: true })
-    })
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const error = params.get('error')
+
+    if (error) {
+      console.error('OAuth error:', error, params.get('error_description'))
+      navigate('/login', { replace: true })
+      return
+    }
+
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (error || !data.session) {
+          console.error('Session exchange failed:', error)
+          navigate('/login', { replace: true })
+        } else {
+          navigate('/dashboard', { replace: true })
+        }
+      })
+    } else {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) navigate('/dashboard', { replace: true })
+        else navigate('/login', { replace: true })
+      })
+    }
   }, [navigate])
 
   return (
