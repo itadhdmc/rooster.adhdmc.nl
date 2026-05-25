@@ -15,6 +15,9 @@ export default function MijnRooster() {
   const [assignments, setAssignments] = useState<AssignmentWithShift[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
+  const [autoSyncing, setAutoSyncing] = useState(false)
+  const [autoSyncSuccess, setAutoSyncSuccess] = useState(false)
+  const [autoSynced, setAutoSynced] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -34,8 +37,36 @@ export default function MijnRooster() {
     loadAssignments()
   }, [profile, selectedMonth])
 
+  // Auto-sync newly approved shifts when both token and assignments are ready
+  useEffect(() => {
+    if (loading || autoSynced || !googleToken) return
+    const unsynced = assignments.filter(a => a.status === 'approved' && !a.google_calendar_event_id)
+    if (unsynced.length === 0) return
+    setAutoSynced(true)
+    runAutoSync(unsynced, googleToken)
+  }, [loading, googleToken, assignments, autoSynced])
+
+  async function runAutoSync(unsynced: AssignmentWithShift[], token: string) {
+    setAutoSyncing(true)
+    let synced = 0
+    for (const a of unsynced) {
+      const eventId = await createCalendarEvent(a.shift, token)
+      if (eventId) {
+        await supabase.from('assignments').update({ google_calendar_event_id: eventId }).eq('id', a.id)
+        synced++
+      }
+    }
+    if (synced > 0) {
+      await loadAssignments()
+      setAutoSyncSuccess(true)
+      setTimeout(() => setAutoSyncSuccess(false), 5000)
+    }
+    setAutoSyncing(false)
+  }
+
   async function loadAssignments() {
     setLoading(true)
+    setAutoSynced(false)
     const [year, month] = selectedMonth.split('-').map(Number)
     const start = `${year}-${String(month).padStart(2, '0')}-01`
     const end   = `${year}-${String(month).padStart(2, '0')}-31`
@@ -52,7 +83,6 @@ export default function MijnRooster() {
         return shift.shift_date >= start && shift.shift_date <= end
       })
       .sort((a, b) => {
-        // Approved first, then pending; within each group by date
         if (a.status !== b.status) return a.status === 'approved' ? -1 : 1
         return (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date)
       })
@@ -125,6 +155,22 @@ export default function MijnRooster() {
         </select>
       </div>
 
+      {/* Auto-sync bezig */}
+      {autoSyncing && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <p className="font-medium">Diensten worden gesynchroniseerd met Google Agenda...</p>
+        </div>
+      )}
+
+      {/* Auto-sync gelukt */}
+      {autoSyncSuccess && (
+        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
+          <span className="text-lg flex-shrink-0">✓</span>
+          <p className="font-medium">Diensten zijn automatisch aan je Google Agenda toegevoegd.</p>
+        </div>
+      )}
+
       {/* Google Calendar warning */}
       {tokenWarning && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
@@ -194,7 +240,7 @@ export default function MijnRooster() {
           </div>
           <button
             onClick={syncAll}
-            disabled={!googleToken || syncedCount === approvedAssignments.length}
+            disabled={!googleToken || syncedCount === approvedAssignments.length || autoSyncing}
             className="flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             style={{ backgroundColor: '#3c3c3b' }}
           >
