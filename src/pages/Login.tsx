@@ -18,7 +18,7 @@ export default function Login() {
         className="hidden lg:flex flex-col justify-between w-1/2 p-12"
         style={{ backgroundColor: '#3c3c3b' }}
       >
-        <img src="/logo.png" alt="ADHDMC" className="h-12 w-auto self-start object-contain" />
+        <img src="/logo.png" alt="ADHDMC" className="h-56 w-auto self-start object-contain" />
         <div>
           <h2 className="text-4xl font-bold text-white leading-snug mb-4">
             Roosterbeheer<br />voor de studentenpool
