@@ -12,6 +12,7 @@ export default function RoosterBeheer() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [showPendingPanel, setShowPendingPanel] = useState(false)
 
   useEffect(() => { loadAll() }, [periodId])
 
@@ -122,19 +123,38 @@ export default function RoosterBeheer() {
         </div>
       </div>
 
-      {/* Pending aanvragen banner */}
+      {/* Pending aanvragen banner — klikbaar */}
       {totalPending > 0 && (
-        <div className="card p-4 flex items-center gap-3">
+        <button
+          onClick={() => setShowPendingPanel(v => !v)}
+          className="card p-4 flex items-center gap-3 w-full text-left hover:bg-gray-50/60 transition-colors"
+        >
           <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
             <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
           </div>
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-semibold text-dark">
               {totalPending} aanvra{totalPending === 1 ? 'ag' : 'gen'} wacht op goedkeuring
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">Klik op een dag om te beoordelen.</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {showPendingPanel ? 'Klik om te sluiten' : 'Klik voor snel overzicht'}
+            </p>
           </div>
-        </div>
+          <svg className={`w-4 h-4 text-gray-300 transition-transform ${showPendingPanel ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
+
+      {/* Quick-approve panel */}
+      {showPendingPanel && totalPending > 0 && (
+        <QuickApprovePanel
+          shifts={shifts}
+          processing={processing}
+          onApprove={approveAssignment}
+          onReject={rejectAssignment}
+        />
       )}
 
       {/* Legend */}
@@ -322,6 +342,89 @@ export default function RoosterBeheer() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function QuickApprovePanel({
+  shifts, processing, onApprove, onReject
+}: {
+  shifts: ShiftWithAssignments[]
+  processing: string | null
+  onApprove: (id: string) => void
+  onReject: (id: string) => void
+}) {
+  const rows: { shift: ShiftWithAssignments; student: NonNullable<ShiftWithAssignments['assigned_students']>[number] }[] = []
+  for (const s of [...shifts].sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.shift_type.localeCompare(b.shift_type))) {
+    for (const st of (s.assigned_students || []).filter(a => a.status === 'pending')) {
+      rows.push({ shift: s, student: st })
+    }
+  }
+
+  const SHIFT_DAYS_NL: Record<string, string> = {
+    Monday: 'Maandag', Tuesday: 'Dinsdag', Wednesday: 'Woensdag',
+    Thursday: 'Donderdag', Friday: 'Vrijdag', Saturday: 'Zaterdag',
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100 bg-amber-50/60">
+        <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">
+          Snel goedkeuren — {rows.length} openstaand{rows.length === 1 ? '' : 'e'}
+        </p>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {rows.map(({ shift, student }) => {
+          const d = new Date(shift.shift_date + 'T00:00:00')
+          const dayNl = SHIFT_DAYS_NL[d.toLocaleDateString('en-US', { weekday: 'long' })] || ''
+          const dateStr = `${dayNl} ${d.getDate()} ${d.toLocaleDateString('nl-NL', { month: 'long' })}`
+          const isOchtend = shift.shift_type === 'ochtend'
+          return (
+            <div key={student.assignment_id} className="flex items-center gap-4 px-5 py-3.5">
+              {/* Date + type */}
+              <div className="w-36 flex-shrink-0">
+                <p className="text-xs font-semibold text-dark leading-tight">{dateStr}</p>
+                <span className={`inline-block text-[10px] font-medium px-2 py-0.5 rounded-full mt-1 ${
+                  isOchtend ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'
+                }`}>
+                  {isOchtend ? 'Ochtend' : 'Middag'} · {shift.start_time.slice(0, 5)}
+                </span>
+              </div>
+
+              {/* Student */}
+              <div className="flex-1 flex items-center gap-2 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-amber-300 flex-shrink-0" />
+                <p className="text-sm font-semibold text-dark truncate">
+                  {student.full_name || student.email}
+                </p>
+              </div>
+
+              {/* Capacity */}
+              <p className="text-xs text-gray-400 hidden sm:block flex-shrink-0">
+                {shift.assigned_count}/{shift.max_students}
+              </p>
+
+              {/* Actions */}
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  onClick={() => onApprove(student.assignment_id)}
+                  disabled={processing === student.assignment_id}
+                  className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                >
+                  {processing === student.assignment_id ? '...' : 'Goedkeuren'}
+                </button>
+                <button
+                  onClick={() => onReject(student.assignment_id)}
+                  disabled={processing === student.assignment_id}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                >
+                  Afwijzen
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

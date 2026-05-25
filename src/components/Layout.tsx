@@ -1,6 +1,7 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 import { signOut } from '../lib/auth'
 
 interface LayoutProps {
@@ -17,6 +18,26 @@ export default function Layout({ children }: LayoutProps) {
   const { profile, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!profile) return
+    supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', profile.id)
+      .eq('read', false)
+      .then(({ count }) => setUnreadCount(count ?? 0))
+
+    const channel = supabase
+      .channel('inbox-badge')
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'notifications',
+        filter: `user_id=eq.${profile.id}`,
+      }, () => setUnreadCount(c => c + 1))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile?.id])
 
   async function handleSignOut() {
     await signOut()
@@ -76,6 +97,16 @@ export default function Layout({ children }: LayoutProps) {
                   Admin
                 </span>
               )}
+
+              {/* Bell */}
+              <NavLink to="/inbox" className="relative p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                onClick={() => setUnreadCount(0)}>
+                <BellIcon className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                )}
+              </NavLink>
+
               <div className="hidden sm:flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-white text-sm font-medium leading-tight">
@@ -121,6 +152,15 @@ export default function Layout({ children }: LayoutProps) {
                   Beheer
                 </NavLink>
               )}
+              <NavLink to="/inbox" className={mobileNavClass} onClick={() => { setMenuOpen(false); setUnreadCount(0) }}>
+                <div className="relative">
+                  <BellIcon className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                  )}
+                </div>
+                Inbox{unreadCount > 0 ? ` (${unreadCount})` : ''}
+              </NavLink>
               <div className="px-4 py-3 flex items-center justify-between">
                 <span className="text-sm text-gray-500">{profile?.email}</span>
                 <button onClick={handleSignOut} className="text-sm text-salmon-500 font-medium">
@@ -196,6 +236,15 @@ function XIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
     </svg>
   )
 }

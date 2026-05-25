@@ -27,11 +27,12 @@ export default function AuthCallback() {
         const user = data.session.user
 
         // Profiel aanmaken of updaten
-        await supabase.from('profiles').upsert({
+        const { error: upsertError } = await supabase.from('profiles').upsert({
           id: user.id,
           email: user.email!,
           full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-        }, { onConflict: 'id', ignoreDuplicates: true })
+        }, { onConflict: 'id' })
+        if (upsertError) console.error('Profiel upsert fout:', upsertError.message)
 
         // Koppel eventuele pre-registratie aan dit account
         await supabase.rpc('claim_pending_student')

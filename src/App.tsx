@@ -12,6 +12,7 @@ import NieuwePeriode from './pages/admin/NieuwePeriode'
 import RoosterBeheer from './pages/admin/RoosterBeheer'
 import Studenten from './pages/admin/Studenten'
 import BeschikbaarheidOverzicht from './pages/admin/BeschikbaarheidOverzicht'
+import Inbox from './pages/Inbox'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { session, loading, isAdmin } = useAuth()
@@ -43,6 +44,7 @@ function AppRoutes() {
       <Route path="/beschikbaarheid" element={<ProtectedRoute><Beschikbaarheid /></ProtectedRoute>} />
       <Route path="/mijn-rooster" element={<ProtectedRoute><MijnRooster /></ProtectedRoute>} />
       <Route path="/ruilverzoeken" element={<ProtectedRoute><Ruilverzoeken /></ProtectedRoute>} />
+      <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
 
       <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/periodes/nieuw" element={<ProtectedRoute adminOnly><NieuwePeriode /></ProtectedRoute>} />

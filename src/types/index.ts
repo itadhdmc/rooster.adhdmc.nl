@@ -101,6 +101,25 @@ export interface SwappableAssignment {
   duration_hours: number
 }
 
+export type NotificationType =
+  | 'shift_approved'
+  | 'shift_rejected'
+  | 'admin_pending'
+  | 'spot_available'
+  | 'swap_request'
+  | 'swap_approved'
+  | 'swap_rejected'
+
+export interface Notification {
+  id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  body: string
+  read: boolean
+  created_at: string
+}
+
 export interface StudentHours {
   user_id: string
   full_name: string
