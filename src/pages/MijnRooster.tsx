@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getGoogleToken } from '../lib/auth'
 import { createCalendarEvent, deleteCalendarEvent } from '../lib/calendar'
-import { Shift, Assignment } from '../types'
+import { Shift, Assignment, SwappableAssignment } from '../types'
 import { formatDate, monthLabel } from '../utils/dates'
 
 interface AssignmentWithShift extends Assignment {
@@ -24,6 +25,11 @@ export default function MijnRooster() {
   })
   const [googleToken, setGoogleToken] = useState<string | null>(null)
   const [tokenWarning, setTokenWarning] = useState(false)
+  const [incomingSwapCount, setIncomingSwapCount] = useState(0)
+  const [swapModal, setSwapModal] = useState<AssignmentWithShift | null>(null)
+  const [swappable, setSwappable] = useState<SwappableAssignment[]>([])
+  const [loadingSwappable, setLoadingSwappable] = useState(false)
+  const [swapSuccess, setSwapSuccess] = useState(false)
 
   useEffect(() => {
     getGoogleToken().then(token => {
@@ -31,6 +37,10 @@ export default function MijnRooster() {
       if (!token) setTokenWarning(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (profile) loadIncomingSwapCount()
+  }, [profile])
 
   useEffect(() => {
     if (!profile) return
@@ -115,6 +125,37 @@ export default function MijnRooster() {
     setSyncing(prev => ({ ...prev, [assignment.shift_id]: false }))
   }
 
+  async function loadIncomingSwapCount() {
+    const { count } = await supabase
+      .from('shift_swaps')
+      .select('*', { count: 'exact', head: true })
+      .eq('target_user_id', profile!.id)
+      .eq('status', 'pending')
+    setIncomingSwapCount(count || 0)
+  }
+
+  async function openSwapModal(assignment: AssignmentWithShift) {
+    setSwapModal(assignment)
+    setLoadingSwappable(true)
+    const { data } = await supabase.rpc('get_swappable_assignments')
+    setSwappable((data as SwappableAssignment[]) || [])
+    setLoadingSwappable(false)
+  }
+
+  async function requestSwap(targetAssignmentId: string, targetUserId: string) {
+    if (!profile || !swapModal) return
+    const { error } = await supabase.from('shift_swaps').insert({
+      requester_id: profile.id,
+      requester_assignment_id: swapModal.id,
+      target_user_id: targetUserId,
+      target_assignment_id: targetAssignmentId,
+    })
+    if (error) { alert('Ruilverzoek mislukt: ' + error.message); return }
+    setSwapModal(null)
+    setSwapSuccess(true)
+    setTimeout(() => setSwapSuccess(false), 5000)
+  }
+
   async function syncAll() {
     if (!googleToken) { setTokenWarning(true); return }
     const unsynced = assignments.filter(a => !a.google_calendar_event_id)
@@ -154,6 +195,38 @@ export default function MijnRooster() {
           ))}
         </select>
       </div>
+
+      {/* Inkomende ruilverzoeken */}
+      {incomingSwapCount > 0 && (
+        <Link to="/ruilverzoeken" className="card p-4 flex items-center justify-between gap-3 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-dark">
+                {incomingSwapCount} ruilverzoek{incomingSwapCount !== 1 ? 'en' : ''}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">Een collega wil met je ruilen</p>
+            </div>
+          </div>
+          <span className="text-sm font-semibold flex-shrink-0" style={{ color: '#f87369' }}>Bekijken →</span>
+        </Link>
+      )}
+
+      {/* Swap success */}
+      {swapSuccess && (
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-dark">Ruilverzoek verstuurd</p>
+        </div>
+      )}
 
       {/* Auto-sync bezig */}
       {autoSyncing && (
@@ -307,12 +380,19 @@ export default function MijnRooster() {
                     {a.shift.shift_type}
                   </span>
                   <button
+                    onClick={() => openSwapModal(a)}
+                    title="Ruilverzoek aanvragen"
+                    className="px-2.5 py-1.5 rounded-xl text-gray-400 bg-gray-50 hover:bg-gray-100 transition-colors text-xs font-medium"
+                  >
+                    Ruil
+                  </button>
+                  <button
                     onClick={() => syncShift(a)}
                     disabled={syncing[a.shift_id] || !googleToken}
                     title={a.google_calendar_event_id ? 'Verwijder uit Google Agenda' : 'Voeg toe aan Google Agenda'}
                     className={`p-2 rounded-xl transition-colors disabled:opacity-40 ${
                       a.google_calendar_event_id
-                        ? 'text-green-600 bg-green-50 hover:bg-green-100'
+                        ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100'
                         : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
                     }`}
                   >
@@ -325,6 +405,53 @@ export default function MijnRooster() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {/* Swap modal */}
+      {swapModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSwapModal(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col z-10">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="font-bold text-dark">Ruilverzoek</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Jouw dienst: {new Date(swapModal.shift.shift_date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' })} · {swapModal.shift.shift_type}
+                </p>
+              </div>
+              <button onClick={() => setSwapModal(null)} className="text-gray-400 hover:text-dark text-2xl leading-none transition-colors">×</button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              {loadingSwappable ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+                </div>
+              ) : swappable.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-8">
+                  Geen collega's met ruilbare diensten beschikbaar.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                    Kies een dienst om voor te ruilen
+                  </p>
+                  {swappable.map(a => (
+                    <button
+                      key={a.assignment_id}
+                      onClick={() => requestSwap(a.assignment_id, a.user_id)}
+                      className="w-full text-left p-3.5 rounded-xl border border-gray-100 hover:border-salmon-300 hover:bg-orange-50/30 transition-colors"
+                    >
+                      <p className="text-sm font-semibold text-dark">{a.full_name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(a.shift_date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}
+                        {' · '}{a.shift_type}{' · '}{a.start_time.slice(0, 5)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

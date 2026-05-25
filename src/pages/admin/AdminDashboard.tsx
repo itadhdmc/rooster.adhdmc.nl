@@ -1,30 +1,49 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { RosterPeriod, Profile } from '../../types'
+import { RosterPeriod, Profile, SwapDetail } from '../../types'
 import { monthLabel } from '../../utils/dates'
 
 export default function AdminDashboard() {
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
   const [students, setStudents] = useState<Profile[]>([])
   const [stats, setStats] = useState({ totalShifts: 0, openShifts: 0, assignedShifts: 0 })
+  const [pendingSwaps, setPendingSwaps] = useState<SwapDetail[]>([])
+  const [processingSwap, setProcessingSwap] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
-    const [{ data: pData }, { data: sData }, { data: shiftData }] = await Promise.all([
+    const [{ data: pData }, { data: sData }, { data: shiftData }, { data: swapData }] = await Promise.all([
       supabase.from('roster_periods').select('*').order('year').order('month'),
       supabase.from('profiles').select('*').eq('role', 'student').eq('active', true),
       supabase.from('shifts_with_assignments').select('assigned_count,open_spots'),
+      supabase.rpc('get_employee_approved_swaps'),
     ])
     setPeriods(pData || [])
     setStudents(sData || [])
+    setPendingSwaps((swapData as SwapDetail[]) || [])
 
     const total = (shiftData || []).length
     const open = (shiftData || []).filter(s => s.open_spots > 0).length
     setStats({ totalShifts: total, openShifts: open, assignedShifts: total - open })
     setLoading(false)
+  }
+
+  async function approveSwap(swapId: string) {
+    setProcessingSwap(swapId)
+    const { error } = await supabase.rpc('execute_shift_swap', { swap_id: swapId })
+    if (error) alert('Ruil goedkeuren mislukt: ' + error.message)
+    await loadData()
+    setProcessingSwap(null)
+  }
+
+  async function rejectSwap(swapId: string) {
+    setProcessingSwap(swapId)
+    await supabase.from('shift_swaps').update({ status: 'rejected' }).eq('id', swapId)
+    await loadData()
+    setProcessingSwap(null)
   }
 
   if (loading) return <Spinner />
@@ -59,6 +78,57 @@ export default function AdminDashboard() {
         <QuickLink to="/admin/rooster" title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} />
         <QuickLink to="/admin/beschikbaarheid" title="Beschikbaarheid" desc="Ingegeven beschikbaarheid" icon={<ListIcon />} />
       </div>
+
+      {/* Pending swap approvals */}
+      {pendingSwaps.length > 0 && (
+        <div>
+          <h2 className="font-bold text-dark mb-3 flex items-center gap-2">
+            Ruilverzoeken goedkeuren
+            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+              {pendingSwaps.length}
+            </span>
+          </h2>
+          <div className="space-y-2">
+            {pendingSwaps.map(swap => (
+              <div key={swap.id} className="card p-4 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-dark">
+                    {swap.requester_name} ↔ {swap.target_name}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <span className="text-xs text-gray-500">
+                      {new Date(swap.req_shift_date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {' '}({swap.req_shift_type})
+                    </span>
+                    <span className="text-gray-300 text-xs">↔</span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(swap.tgt_shift_date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {' '}({swap.tgt_shift_type})
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-600 mt-1">Beide medewerkers hebben akkoord gegeven</p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => approveSwap(swap.id)}
+                    disabled={processingSwap === swap.id}
+                    className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                  >
+                    {processingSwap === swap.id ? '...' : 'Goedkeuren'}
+                  </button>
+                  <button
+                    onClick={() => rejectSwap(swap.id)}
+                    disabled={processingSwap === swap.id}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 disabled:opacity-50 transition-colors"
+                  >
+                    Afwijzen
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Periods */}
       <div>

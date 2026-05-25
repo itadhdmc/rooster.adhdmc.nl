@@ -70,6 +70,37 @@ export interface Assignment {
   status: AssignmentStatus
 }
 
+export type SwapStatus = 'pending' | 'employee_approved' | 'admin_approved' | 'rejected'
+
+export interface SwapDetail {
+  id: string
+  requester_id: string
+  requester_name: string
+  target_user_id: string
+  target_name: string
+  requester_assignment_id: string
+  target_assignment_id: string
+  status: SwapStatus
+  created_at: string
+  req_shift_date: string
+  req_shift_type: string
+  req_start_time: string
+  tgt_shift_date: string
+  tgt_shift_type: string
+  tgt_start_time: string
+}
+
+export interface SwappableAssignment {
+  assignment_id: string
+  user_id: string
+  full_name: string
+  shift_date: string
+  shift_type: string
+  start_time: string
+  end_time: string
+  duration_hours: number
+}
+
 export interface StudentHours {
   user_id: string
   full_name: string

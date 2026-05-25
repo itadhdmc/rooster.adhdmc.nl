@@ -6,6 +6,7 @@ import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import Beschikbaarheid from './pages/Beschikbaarheid'
 import MijnRooster from './pages/MijnRooster'
+import Ruilverzoeken from './pages/Ruilverzoeken'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import NieuwePeriode from './pages/admin/NieuwePeriode'
 import RoosterBeheer from './pages/admin/RoosterBeheer'
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/beschikbaarheid" element={<ProtectedRoute><Beschikbaarheid /></ProtectedRoute>} />
       <Route path="/mijn-rooster" element={<ProtectedRoute><MijnRooster /></ProtectedRoute>} />
+      <Route path="/ruilverzoeken" element={<ProtectedRoute><Ruilverzoeken /></ProtectedRoute>} />
 
       <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/periodes/nieuw" element={<ProtectedRoute adminOnly><NieuwePeriode /></ProtectedRoute>} />
