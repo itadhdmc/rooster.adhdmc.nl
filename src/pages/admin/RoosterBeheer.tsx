@@ -30,7 +30,11 @@ export default function RoosterBeheer() {
 
   async function approveAssignment(assignmentId: string) {
     setProcessing(assignmentId)
-    await supabase.from('assignments').update({ status: 'approved' }).eq('id', assignmentId)
+    const { error } = await supabase
+      .from('assignments')
+      .update({ status: 'approved' })
+      .eq('id', assignmentId)
+    if (error) alert('Goedkeuren mislukt: ' + error.message)
     await loadAll()
     setProcessing(null)
   }
