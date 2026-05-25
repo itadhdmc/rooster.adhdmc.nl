@@ -11,19 +11,29 @@ export default function AuthCallback() {
     const error = params.get('error')
 
     if (error) {
-      console.error('OAuth error:', error, params.get('error_description'))
+      console.error('OAuth fout:', error, params.get('error_description'))
       navigate('/login', { replace: true })
       return
     }
 
     if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+      supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
         if (error || !data.session) {
-          console.error('Session exchange failed:', error)
+          console.error('Sessie fout:', error)
           navigate('/login', { replace: true })
-        } else {
-          navigate('/dashboard', { replace: true })
+          return
         }
+
+        const user = data.session.user
+
+        // Profiel aanmaken als het nog niet bestaat
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          email: user.email!,
+          full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+        }, { onConflict: 'id', ignoreDuplicates: true })
+
+        navigate('/dashboard', { replace: true })
       })
     } else {
       supabase.auth.getSession().then(({ data: { session } }) => {
