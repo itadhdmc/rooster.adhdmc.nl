@@ -2,16 +2,16 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-import { RosterPeriod, Assignment, Shift } from '../types'
+import { RosterPeriod, Shift } from '../types'
 import { monthLabel, formatDate } from '../utils/dates'
 
 interface UpcomingShift {
-  assignment: Assignment
   shift: Shift
+  assigned_at: string
 }
 
 export default function Dashboard() {
-  const { profile, isAdmin } = useAuth()
+  const { profile, isAdmin, loading: authLoading } = useAuth()
   const [activePeriod, setActivePeriod] = useState<RosterPeriod | null>(null)
   const [upcomingShifts, setUpcomingShifts] = useState<UpcomingShift[]>([])
   const [weekHours, setWeekHours] = useState(0)
@@ -19,81 +19,106 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!profile) return
-    loadDashboard().catch(() => setLoading(false))
-  }, [profile])
+    // Wacht tot auth klaar is
+    if (authLoading) return
 
-  async function loadDashboard() {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth() + 1
-
-    const [{ data: periods }, { data: assignments }] = await Promise.all([
-      supabase
-        .from('roster_periods')
-        .select('*')
-        .gte('month', month)
-        .eq('year', year)
-        .order('month'),
-      supabase
-        .from('assignments')
-        .select('*, shifts(*)')
-        .eq('user_id', profile!.id),
-    ])
-
-    const openPeriod = periods?.find(p => p.availability_open || p.second_round_open)
-    setActivePeriod(openPeriod || periods?.[0] || null)
-
-    if (assignments) {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const weekEnd = new Date(today)
-      weekEnd.setDate(weekEnd.getDate() + 7)
-
-      const upcoming = assignments
-        .filter(a => {
-          const shift = (a as any).shifts as Shift
-          if (!shift) return false
-          const d = new Date(shift.shift_date)
-          return d >= today
-        })
-        .sort((a, b) => {
-          const da = new Date((a as any).shifts.shift_date)
-          const db = new Date((b as any).shifts.shift_date)
-          return da.getTime() - db.getTime()
-        })
-        .slice(0, 5)
-        .map(a => ({ assignment: a as Assignment, shift: (a as any).shifts as Shift }))
-
-      setUpcomingShifts(upcoming)
-
-      let wh = 0, mh = 0
-      for (const a of assignments) {
-        const shift = (a as any).shifts as Shift
-        if (!shift) continue
-        const d = new Date(shift.shift_date)
-        if (d >= today && d <= weekEnd) wh += shift.duration_hours
-        if (d.getFullYear() === year && d.getMonth() + 1 === month) mh += shift.duration_hours
-      }
-      setWeekHours(wh)
-      setMonthHours(mh)
+    // Auth klaar maar geen profiel - stop laden
+    if (!profile) {
+      setLoading(false)
+      return
     }
 
-    setLoading(false)
+    loadDashboard()
+  }, [profile, authLoading])
+
+  async function loadDashboard() {
+    try {
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = now.getMonth() + 1
+
+      const [{ data: periods }, { data: assignments }] = await Promise.all([
+        supabase
+          .from('roster_periods')
+          .select('*')
+          .eq('year', year)
+          .order('month'),
+        supabase
+          .from('assignments')
+          .select('*, shifts(*)')
+          .eq('user_id', profile!.id),
+      ])
+
+      const openPeriod = periods?.find(p => p.availability_open || p.second_round_open)
+      setActivePeriod(openPeriod || periods?.[0] || null)
+
+      if (assignments && assignments.length > 0) {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const weekEnd = new Date(today)
+        weekEnd.setDate(weekEnd.getDate() + 7)
+
+        const upcoming = assignments
+          .filter(a => {
+            const shift = (a as any).shifts as Shift
+            if (!shift) return false
+            return new Date(shift.shift_date) >= today
+          })
+          .sort((a, b) => {
+            const da = new Date((a as any).shifts.shift_date)
+            const db = new Date((b as any).shifts.shift_date)
+            return da.getTime() - db.getTime()
+          })
+          .slice(0, 5)
+          .map(a => ({ shift: (a as any).shifts as Shift, assigned_at: a.assigned_at }))
+
+        setUpcomingShifts(upcoming)
+
+        let wh = 0, mh = 0
+        for (const a of assignments) {
+          const shift = (a as any).shifts as Shift
+          if (!shift) continue
+          const d = new Date(shift.shift_date)
+          if (d >= today && d <= weekEnd) wh += Number(shift.duration_hours)
+          if (d.getFullYear() === year && d.getMonth() + 1 === month) mh += Number(shift.duration_hours)
+        }
+        setWeekHours(wh)
+        setMonthHours(mh)
+      }
+    } catch (err) {
+      console.error('Dashboard fout:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  if (loading) return <Spinner />
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-sm text-gray-500">Laden...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-gray-600">Profiel niet gevonden. Probeer opnieuw in te loggen.</p>
+      </div>
+    )
+  }
 
   const shiftBadge = (type: string) =>
-    type === 'ochtend'
-      ? 'bg-amber-100 text-amber-800'
-      : 'bg-purple-100 text-purple-800'
+    type === 'ochtend' ? 'bg-amber-100 text-amber-800' : 'bg-purple-100 text-purple-800'
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Hallo, {profile?.full_name?.split(' ')[0] || 'daar'} 👋
+          Hallo, {profile.full_name?.split(' ')[0] || 'daar'} 👋
         </h1>
         <p className="text-gray-500 text-sm mt-1">
           {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -104,11 +129,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Uren deze week" value={`${weekHours}u`} color="blue" />
         <StatCard label="Uren deze maand" value={`${monthHours}u`} color="green" />
-        <StatCard label="Contract min" value={`${profile?.contract_min_hours}u/week`} color="gray" />
-        <StatCard label="Contract max" value={`${profile?.contract_max_hours}u/week`} color="gray" />
+        <StatCard label="Contract min" value={`${profile.contract_min_hours}u/week`} color="gray" />
+        <StatCard label="Contract max" value={`${profile.contract_max_hours}u/week`} color="gray" />
       </div>
 
-      {/* Open beschikbaarheidsronde */}
+      {/* Open ronde */}
       {activePeriod && (activePeriod.availability_open || activePeriod.second_round_open) && (
         <div className={`rounded-xl p-5 border-2 ${activePeriod.second_round_open ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
           <div className="flex items-start justify-between">
@@ -118,9 +143,8 @@ export default function Dashboard() {
               </p>
               <p className="text-sm text-gray-600 mt-1">
                 {activePeriod.second_round_open
-                  ? `Er zijn nog open diensten voor ${monthLabel(activePeriod.year, activePeriod.month)}. Schrijf je in!`
-                  : `Geef je beschikbaarheid door voor ${monthLabel(activePeriod.year, activePeriod.month)}.`
-                }
+                  ? `Er zijn nog open diensten voor ${monthLabel(activePeriod.year, activePeriod.month)}.`
+                  : `Geef je beschikbaarheid door voor ${monthLabel(activePeriod.year, activePeriod.month)}.`}
               </p>
               {activePeriod.availability_deadline && (
                 <p className="text-xs text-gray-500 mt-1">
@@ -128,10 +152,7 @@ export default function Dashboard() {
                 </p>
               )}
             </div>
-            <Link
-              to="/beschikbaarheid"
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors whitespace-nowrap"
-            >
+            <Link to="/beschikbaarheid" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors whitespace-nowrap">
               Invullen →
             </Link>
           </div>
@@ -146,7 +167,7 @@ export default function Dashboard() {
         </div>
         {upcomingShifts.length === 0 ? (
           <div className="text-center py-8 bg-white rounded-xl border border-gray-200 text-gray-500 text-sm">
-            Geen ingeplande diensten gevonden.
+            Geen ingeplande diensten.
           </div>
         ) : (
           <div className="space-y-2">
@@ -191,14 +212,6 @@ function StatCard({ label, value, color }: { label: string; value: string; color
     <div className={`rounded-xl border p-4 ${colors[color]}`}>
       <p className="text-2xl font-bold">{value}</p>
       <p className="text-xs mt-1 opacity-75">{label}</p>
-    </div>
-  )
-}
-
-function Spinner() {
-  return (
-    <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
