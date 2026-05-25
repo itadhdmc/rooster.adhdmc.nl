@@ -11,6 +11,7 @@ export default function RoosterBeheer() {
   const [students, setStudents] = useState<Profile[]>([])
   const [availability, setAvailability] = useState<Availability[]>([])
   const [studentHours, setStudentHours] = useState<Record<string, number>>({})
+  const [studentDates, setStudentDates] = useState<Record<string, Set<string>>>({})
   const [loading, setLoading] = useState(true)
   const [assigningShift, setAssigningShift] = useState<string | null>(null)
 
@@ -23,7 +24,7 @@ export default function RoosterBeheer() {
       supabase.from('shifts_with_assignments').select('*').eq('period_id', periodId).order('shift_date').order('shift_type'),
       supabase.from('profiles').select('*').eq('role', 'student').eq('active', true),
       supabase.from('availability').select('*').eq('period_id', periodId),
-      supabase.from('assignments').select('*, shifts(duration_hours, period_id)').eq('shifts.period_id', periodId),
+      supabase.from('assignments').select('*, shifts(duration_hours, period_id, shift_date)').eq('shifts.period_id', periodId),
     ])
 
     setPeriod(p)
@@ -31,14 +32,18 @@ export default function RoosterBeheer() {
     setStudents(st || [])
     setAvailability(av || [])
 
-    // Bereken uren per student voor deze periode
+    // Bereken uren en geboekte datums per student
     const hours: Record<string, number> = {}
+    const dates: Record<string, Set<string>> = {}
     for (const a of assignments || []) {
       const shift = (a as any).shifts
       if (!shift || shift.period_id !== periodId) continue
       hours[a.user_id] = (hours[a.user_id] || 0) + shift.duration_hours
+      if (!dates[a.user_id]) dates[a.user_id] = new Set()
+      dates[a.user_id].add(shift.shift_date)
     }
     setStudentHours(hours)
+    setStudentDates(dates)
 
     setLoading(false)
   }
@@ -165,6 +170,16 @@ export default function RoosterBeheer() {
                             {available.map(student => {
                               const hours = studentHours[student.id] || 0
                               const overMax = hours >= student.contract_max_hours * 4
+                              const hasConflict = studentDates[student.id]?.has(shift.shift_date) ?? false
+                              if (hasConflict) return (
+                                <span
+                                  key={student.id}
+                                  className="text-xs px-2.5 py-1 rounded-lg border border-red-200 text-red-500 bg-red-50 cursor-not-allowed"
+                                  title="Al ingeroosterd op deze dag"
+                                >
+                                  🚫 {student.full_name || student.email.split('@')[0]}
+                                </span>
+                              )
                               return (
                                 <button
                                   key={student.id}
