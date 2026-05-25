@@ -157,27 +157,38 @@ export default function MijnRooster() {
 
       {/* Auto-sync bezig */}
       {autoSyncing && (
-        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-          <p className="font-medium">Diensten worden gesynchroniseerd met Google Agenda...</p>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+            <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-dark">Synchroniseren met Google Agenda</p>
+            <p className="text-xs text-gray-400 mt-0.5">Diensten worden automatisch toegevoegd...</p>
+          </div>
         </div>
       )}
 
       {/* Auto-sync gelukt */}
       {autoSyncSuccess && (
-        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
-          <span className="text-lg flex-shrink-0">✓</span>
-          <p className="font-medium">Diensten zijn automatisch aan je Google Agenda toegevoegd.</p>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-dark">Diensten toegevoegd aan je Google Agenda</p>
         </div>
       )}
 
       {/* Google Calendar warning */}
       {tokenWarning && (
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          <span className="text-lg flex-shrink-0">⚠️</span>
+        <div className="card p-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+          </div>
           <div>
-            <p className="font-semibold">Google Agenda-koppeling niet beschikbaar</p>
-            <p className="mt-0.5 text-amber-700">Log uit en opnieuw in om diensten te synchroniseren met Google Agenda.</p>
+            <p className="text-sm font-semibold text-dark">Google Agenda niet verbonden</p>
+            <p className="text-xs text-gray-400 mt-0.5">Log uit en opnieuw in om diensten te synchroniseren.</p>
           </div>
         </div>
       )}
@@ -201,8 +212,8 @@ export default function MijnRooster() {
       {/* Pending aanvragen */}
       {pendingAssignments.length > 0 && (
         <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-50 bg-amber-50">
-            <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Wacht op goedkeuring</p>
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Wacht op goedkeuring</p>
           </div>
           <div className="divide-y divide-gray-50">
             {pendingAssignments.map(a => (
@@ -288,10 +299,10 @@ export default function MijnRooster() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${
                     a.shift.shift_type === 'ochtend'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-purple-100 text-purple-700'
+                      ? 'bg-orange-50 text-orange-500'
+                      : 'bg-indigo-50 text-indigo-500'
                   }`}>
                     {a.shift.shift_type}
                   </span>

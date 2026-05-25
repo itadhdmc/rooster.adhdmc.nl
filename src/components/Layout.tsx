@@ -46,7 +46,7 @@ export default function Layout({ children }: LayoutProps) {
             {/* Logo + nav links */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3 flex-shrink-0">
-                <img src="/logo.png" alt="ADHDMC" className="h-8 w-auto" />
+                <img src="/logo.png" alt="ADHDMC" className="h-12 w-auto" />
                 <div className="hidden sm:block">
                   <p className="text-white font-bold text-sm leading-tight">ADHDMC</p>
                   <p className="text-white/50 text-xs leading-tight">Rooster</p>
@@ -135,6 +135,18 @@ export default function Layout({ children }: LayoutProps) {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
+
+      <footer className="border-t border-gray-100 mt-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p className="text-xs text-gray-400">ADHDMC Medisch Centrum · Roostersysteem</p>
+          <p className="text-xs text-gray-400">
+            Vragen of problemen?{' '}
+            <a href="mailto:ictservicedesk@adhdmc.nl" className="font-semibold text-dark hover:text-salmon-500 transition-colors">
+              ictservicedesk@adhdmc.nl
+            </a>
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }

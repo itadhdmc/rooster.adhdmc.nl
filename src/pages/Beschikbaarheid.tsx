@@ -111,9 +111,16 @@ export default function Beschikbaarheid() {
 
       {/* Deadline */}
       {selectedPeriod?.availability_deadline && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-sm text-amber-800">
-          <span>⏰</span>
-          <span>Deadline: <strong>{new Date(selectedPeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</strong></span>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+          </div>
+          <p className="text-sm text-gray-600">
+            Deadline:{' '}
+            <span className="font-semibold text-dark">
+              {new Date(selectedPeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </p>
         </div>
       )}
 
@@ -121,30 +128,36 @@ export default function Beschikbaarheid() {
       {(myPendingCount > 0 || myApprovedCount > 0) && (
         <div className="grid grid-cols-2 gap-3">
           {myPendingCount > 0 && (
-            <div className="card p-4 border-l-4 border-amber-400">
-              <p className="text-xl font-bold text-amber-600">{myPendingCount}</p>
-              <p className="text-xs text-gray-400 mt-0.5">Wacht op goedkeuring</p>
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-amber-400" />
+                <p className="text-xl font-bold text-dark">{myPendingCount}</p>
+              </div>
+              <p className="text-xs text-gray-400">Wacht op goedkeuring</p>
             </div>
           )}
           {myApprovedCount > 0 && (
-            <div className="card p-4 border-l-4 border-green-400">
-              <p className="text-xl font-bold text-green-600">{myApprovedCount}</p>
-              <p className="text-xs text-gray-400 mt-0.5">Goedgekeurd</p>
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                <p className="text-xl font-bold text-dark">{myApprovedCount}</p>
+              </div>
+              <p className="text-xs text-gray-400">Goedgekeurd</p>
             </div>
           )}
         </div>
       )}
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs">
-        <span className="flex items-center gap-1.5 text-gray-500">
-          <span className="w-2 h-2 rounded-full bg-green-400 inline-block" /> Plek beschikbaar
+      <div className="flex flex-wrap gap-4 text-xs">
+        <span className="flex items-center gap-1.5 text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-emerald-300 inline-block" /> Plek beschikbaar
         </span>
-        <span className="flex items-center gap-1.5 text-gray-500">
-          <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Aangemeld (wacht op goedkeuring)
+        <span className="flex items-center gap-1.5 text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-amber-300 inline-block" /> Aangemeld
         </span>
-        <span className="flex items-center gap-1.5 text-gray-500">
-          <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> Ingeroosterd
+        <span className="flex items-center gap-1.5 text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-indigo-300 inline-block" /> Ingeroosterd
         </span>
       </div>
 
@@ -168,16 +181,16 @@ export default function Beschikbaarheid() {
                     <div className="flex items-center gap-3 min-w-0">
                       {/* Status dot */}
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                        isApproved ? 'bg-blue-400' :
-                        isPending ? 'bg-amber-400' :
+                        isApproved ? 'bg-indigo-300' :
+                        isPending ? 'bg-amber-300' :
                         isFull ? 'bg-gray-200' :
-                        'bg-green-400'
+                        'bg-emerald-300'
                       }`} />
 
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                            isOchtend ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            isOchtend ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'
                           }`}>
                             {isOchtend ? 'Ochtend' : 'Middag'}
                           </span>

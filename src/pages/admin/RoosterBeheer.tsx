@@ -124,23 +124,25 @@ export default function RoosterBeheer() {
 
       {/* Pending aanvragen banner */}
       {totalPending > 0 && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <span className="text-xl">⏳</span>
+        <div className="card p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+          </div>
           <div>
-            <p className="font-bold text-amber-800 text-sm">
+            <p className="text-sm font-semibold text-dark">
               {totalPending} aanvra{totalPending === 1 ? 'ag' : 'gen'} wacht op goedkeuring
             </p>
-            <p className="text-amber-700 text-xs mt-0.5">Klik op een dag om goedkeuring te geven.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Klik op een dag om te beoordelen.</p>
           </div>
         </div>
       )}
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-        <span>Klik op een dag:</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-green-500 inline-block" /> Vol</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-amber-400 inline-block" /> Gedeeltelijk</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#f87369' }} /> Leeg</span>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
+        <span>Klik op een dag om te beheren</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-emerald-300 inline-block" /> Vol</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-amber-200 inline-block" /> Gedeeltelijk</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-rose-200 inline-block" /> Leeg</span>
       </div>
 
       {/* Calendar grid */}
@@ -181,7 +183,7 @@ export default function RoosterBeheer() {
                         {day.getDate()}
                       </p>
                       {dayPending > 0 && (
-                        <span className="text-[9px] font-bold text-white px-1 rounded-full" style={{ backgroundColor: '#f59e0b' }}>
+                        <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
                           {dayPending}
                         </span>
                       )}
@@ -221,16 +223,16 @@ export default function RoosterBeheer() {
                   <div key={shift.id} className="px-5 py-5">
                     {/* Shift header */}
                     <div className="flex items-center gap-2 mb-4">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                        isOchtend ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                        isOchtend ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'
                       }`}>
                         {isOchtend ? 'Ochtend' : 'Middag'}
                       </span>
                       <span className="text-xs text-gray-400">
                         {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} ({shift.duration_hours}u)
                       </span>
-                      <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ${
-                        isFull ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                      <span className={`ml-auto text-xs font-medium px-2.5 py-1 rounded-full ${
+                        isFull ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'
                       }`}>
                         {shift.assigned_count}/{shift.max_students} goedgekeurd
                       </span>
@@ -239,26 +241,28 @@ export default function RoosterBeheer() {
                     {/* Pending aanvragen */}
                     {pending.length > 0 && (
                       <div className="mb-4">
-                        <p className="text-xs font-bold text-amber-600 mb-2">
-                          ⏳ Aanvragen ({pending.length})
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                          Aanvragen ({pending.length})
                         </p>
                         <div className="space-y-2">
                           {pending.map(s => (
-                            <div key={s.user_id} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-                              <span className="text-sm font-semibold text-dark">{s.full_name || s.email}</span>
+                            <div key={s.user_id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-amber-300" />
+                                <span className="text-sm font-semibold text-dark">{s.full_name || s.email}</span>
+                              </div>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => approveAssignment(s.assignment_id)}
                                   disabled={processing === s.assignment_id}
-                                  className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                                  style={{ backgroundColor: '#22c55e' }}
+                                  className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 bg-emerald-500 hover:bg-emerald-600"
                                 >
-                                  {processing === s.assignment_id ? '...' : '✓ Goedkeuren'}
+                                  {processing === s.assignment_id ? '...' : 'Goedkeuren'}
                                 </button>
                                 <button
                                   onClick={() => rejectAssignment(s.assignment_id)}
                                   disabled={processing === s.assignment_id}
-                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
                                 >
                                   Afwijzen
                                 </button>
@@ -272,15 +276,15 @@ export default function RoosterBeheer() {
                     {/* Goedgekeurde studenten */}
                     {approved.length > 0 && (
                       <div className="mb-4">
-                        <p className="text-xs font-bold text-green-700 mb-2">✓ Ingeroosterd ({approved.length})</p>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Ingeroosterd ({approved.length})</p>
                         <div className="flex flex-wrap gap-2">
                           {approved.map(s => (
-                            <div key={s.user_id} className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-green-800">
+                            <div key={s.user_id} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5 text-xs font-semibold text-emerald-700">
                               <span>{s.full_name || s.email}</span>
                               <button
                                 onClick={() => removeAssignment(s.assignment_id)}
                                 disabled={processing === s.assignment_id}
-                                className="text-green-400 hover:text-red-500 transition-colors font-bold ml-0.5 disabled:opacity-50"
+                                className="text-emerald-300 hover:text-rose-400 transition-colors font-bold ml-0.5 disabled:opacity-50"
                               >×</button>
                             </div>
                           ))}
@@ -309,7 +313,7 @@ export default function RoosterBeheer() {
                     )}
 
                     {isFull && pending.length === 0 && (
-                      <p className="text-xs font-semibold text-green-600">✓ Dienst is vol</p>
+                      <p className="text-xs font-semibold text-emerald-600">Dienst is vol</p>
                     )}
                   </div>
                 )
@@ -331,7 +335,7 @@ function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: strin
   )
 
   const pct = shift.max_students > 0 ? shift.assigned_count / shift.max_students : 0
-  const color = pct >= 1 ? '#22c55e' : pct > 0 ? '#f59e0b' : '#f87369'
+  const color = pct >= 1 ? '#6ee7b7' : pct > 0 ? '#fde68a' : '#fda4af'
   const pendingCount = (shift.assigned_students || []).filter(a => a.status === 'pending').length
 
   return (
