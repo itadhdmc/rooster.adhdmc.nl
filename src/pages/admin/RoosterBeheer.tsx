@@ -32,7 +32,6 @@ export default function RoosterBeheer() {
     setStudents(st || [])
     setAvailability(av || [])
 
-    // Bereken uren en geboekte datums per student
     const hours: Record<string, number> = {}
     const dates: Record<string, Set<string>> = {}
     for (const a of assignments || []) {
@@ -44,16 +43,12 @@ export default function RoosterBeheer() {
     }
     setStudentHours(hours)
     setStudentDates(dates)
-
     setLoading(false)
   }
 
   async function assignStudent(shiftId: string, userId: string) {
     setAssigningShift(shiftId)
-    const { error } = await supabase.from('assignments').insert({
-      shift_id: shiftId,
-      user_id: userId,
-    })
+    const { error } = await supabase.from('assignments').insert({ shift_id: shiftId, user_id: userId })
     if (error) alert('Fout bij inroosteren: ' + error.message)
     await loadAll()
     setAssigningShift(null)
@@ -75,7 +70,7 @@ export default function RoosterBeheer() {
   }
 
   if (loading) return <Spinner />
-  if (!period) return <div className="text-red-500">Periode niet gevonden.</div>
+  if (!period) return <div className="text-red-500 p-4">Periode niet gevonden.</div>
 
   const grouped = shifts.reduce<Record<string, ShiftWithAssignments[]>>((acc, s) => {
     if (!acc[s.shift_date]) acc[s.shift_date] = []
@@ -88,123 +83,127 @@ export default function RoosterBeheer() {
   const openShifts = totalShifts - filledShifts
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center gap-3">
-        <Link to="/admin" className="text-blue-600 text-sm hover:underline">← Terug</Link>
-        <h1 className="text-2xl font-bold text-gray-900">{monthLabel(period.year, period.month)}</h1>
+        <Link to="/admin" className="text-sm font-medium text-gray-400 hover:text-dark transition-colors">← Terug</Link>
+        <span className="text-gray-200">/</span>
+        <h1 className="text-xl font-bold text-dark">{monthLabel(period.year, period.month)}</h1>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 text-center">
-          <p className="text-2xl font-bold text-gray-700">{totalShifts}</p>
-          <p className="text-xs text-gray-500 mt-1">Totaal diensten</p>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-dark">{totalShifts}</p>
+          <p className="text-xs text-gray-400 mt-1">Totaal diensten</p>
         </div>
-        <div className="bg-green-50 rounded-xl border border-green-100 p-4 text-center">
-          <p className="text-2xl font-bold text-green-700">{filledShifts}</p>
-          <p className="text-xs text-green-600 mt-1">Ingevuld</p>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-green-600">{filledShifts}</p>
+          <p className="text-xs text-gray-400 mt-1">Ingevuld</p>
         </div>
-        <div className="bg-red-50 rounded-xl border border-red-100 p-4 text-center">
-          <p className="text-2xl font-bold text-red-600">{openShifts}</p>
-          <p className="text-xs text-red-500 mt-1">Open plekken</p>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold" style={{ color: openShifts > 0 ? '#f87369' : '#22c55e' }}>{openShifts}</p>
+          <p className="text-xs text-gray-400 mt-1">Open plekken</p>
         </div>
       </div>
 
       {/* Per dag */}
       <div className="space-y-3">
         {Object.entries(grouped).map(([date, dayShifts]) => (
-          <div key={date} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 border-b border-gray-100 px-4 py-2">
-              <p className="font-medium text-gray-900 capitalize text-sm">{formatDate(date)}</p>
+          <div key={date} className="card overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-50" style={{ backgroundColor: '#f2f2f7' }}>
+              <p className="font-bold text-dark text-sm capitalize">{formatDate(date)}</p>
             </div>
             <div className="divide-y divide-gray-50">
               {dayShifts.map(shift => {
                 const available = availableStudentsForShift(shift)
                 const isFull = shift.open_spots <= 0
+                const isOchtend = shift.shift_type === 'ochtend'
+
                 return (
-                  <div key={shift.id} className="px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                            shift.shift_type === 'ochtend' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
-                          }`}>
-                            {shift.shift_type === 'ochtend' ? 'Ochtend' : 'Middag'}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} ({shift.duration_hours}u)
-                          </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            isFull ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
-                          }`}>
-                            {shift.assigned_count}/{shift.max_students}
-                          </span>
-                        </div>
-
-                        {/* Toegewezen studenten */}
-                        {shift.assigned_students && shift.assigned_students.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            {shift.assigned_students.map(s => (
-                              <div key={s.user_id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                                <span className="text-xs font-medium text-blue-800">
-                                  {s.full_name || s.email}
-                                </span>
-                                <span className="text-xs text-blue-500">
-                                  ({studentHours[s.user_id] || 0}u/maand)
-                                </span>
-                                <button
-                                  onClick={() => removeAssignment(shift.id, s.user_id)}
-                                  className="text-blue-400 hover:text-red-500 transition-colors ml-1"
-                                  title="Verwijder"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Beschikbare studenten */}
-                        {!isFull && available.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {available.map(student => {
-                              const hours = studentHours[student.id] || 0
-                              const overMax = hours >= student.contract_max_hours * 4
-                              const hasConflict = studentDates[student.id]?.has(shift.shift_date) ?? false
-                              if (hasConflict) return (
-                                <span
-                                  key={student.id}
-                                  className="text-xs px-2.5 py-1 rounded-lg border border-red-200 text-red-500 bg-red-50 cursor-not-allowed"
-                                  title="Al ingeroosterd op deze dag"
-                                >
-                                  🚫 {student.full_name || student.email.split('@')[0]}
-                                </span>
-                              )
-                              return (
-                                <button
-                                  key={student.id}
-                                  onClick={() => assignStudent(shift.id, student.id)}
-                                  disabled={assigningShift === shift.id}
-                                  className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
-                                    overMax
-                                      ? 'border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100'
-                                      : 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'
-                                  } disabled:opacity-50`}
-                                  title={overMax ? `Let op: ${hours}u in maand (boven max)` : `${hours}u in maand`}
-                                >
-                                  + {student.full_name || student.email.split('@')[0]}
-                                  {overMax && ' ⚠️'}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        )}
-
-                        {!isFull && available.length === 0 && (
-                          <p className="text-xs text-gray-400 italic">Geen beschikbare studenten</p>
-                        )}
-                      </div>
+                  <div key={shift.id} className="px-5 py-4">
+                    {/* Shift header */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        isOchtend ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+                      }`}>
+                        {isOchtend ? 'Ochtend' : 'Middag'}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} ({shift.duration_hours}u)
+                      </span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ml-auto ${
+                        isFull ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                      }`}>
+                        {shift.assigned_count}/{shift.max_students}
+                      </span>
                     </div>
+
+                    {/* Assigned students */}
+                    {shift.assigned_students && shift.assigned_students.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {shift.assigned_students.map(s => (
+                          <div
+                            key={s.user_id}
+                            className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium"
+                            style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', color: '#0369a1' }}
+                          >
+                            <span>{s.full_name || s.email}</span>
+                            <span className="opacity-60">({studentHours[s.user_id] || 0}u)</span>
+                            <button
+                              onClick={() => removeAssignment(shift.id, s.user_id)}
+                              className="text-current opacity-40 hover:opacity-100 hover:text-red-500 transition-all ml-1 font-bold"
+                              title="Verwijder"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Available students */}
+                    {!isFull && available.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {available.map(student => {
+                          const hours = studentHours[student.id] || 0
+                          const overMax = hours >= student.contract_max_hours * 4
+                          const hasConflict = studentDates[student.id]?.has(shift.shift_date) ?? false
+
+                          if (hasConflict) return (
+                            <span
+                              key={student.id}
+                              className="text-xs px-2.5 py-1 rounded-xl border font-medium cursor-not-allowed"
+                              style={{ borderColor: '#fca5a5', color: '#ef4444', backgroundColor: '#fff1f0' }}
+                              title="Al ingeroosterd op deze dag"
+                            >
+                              🚫 {student.full_name || student.email.split('@')[0]}
+                            </span>
+                          )
+
+                          return (
+                            <button
+                              key={student.id}
+                              onClick={() => assignStudent(shift.id, student.id)}
+                              disabled={assigningShift === shift.id}
+                              className="text-xs px-2.5 py-1 rounded-xl border font-semibold transition-colors disabled:opacity-50"
+                              style={overMax
+                                ? { borderColor: '#fdba74', color: '#c2410c', backgroundColor: '#fff7ed' }
+                                : { borderColor: '#86efac', color: '#166534', backgroundColor: '#f0fdf4' }
+                              }
+                              title={overMax ? `Let op: ${hours}u in maand (boven max)` : `${hours}u in maand`}
+                            >
+                              + {student.full_name || student.email.split('@')[0]}
+                              {overMax && ' ⚠️'}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {!isFull && available.length === 0 && (
+                      <p className="text-xs text-gray-400 italic">Geen beschikbare studenten</p>
+                    )}
                   </div>
                 )
               })}
@@ -219,7 +218,7 @@ export default function RoosterBeheer() {
 function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
     </div>
   )
 }

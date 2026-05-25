@@ -7,15 +7,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: {
-          50:  '#eff6ff',
-          100: '#dbeafe',
-          500: '#2563eb',
-          600: '#1d4ed8',
-          700: '#1e40af',
-          900: '#1e3a8a',
-        }
-      }
+        salmon: {
+          50:  '#fff1f0',
+          100: '#ffe0de',
+          200: '#ffc2be',
+          400: '#f99590',
+          500: '#f87369',
+          600: '#e5574d',
+          700: '#c83d33',
+        },
+        dark: {
+          DEFAULT: '#3c3c3b',
+          800: '#2e2e2d',
+          900: '#1e1e1d',
+        },
+        surface: '#f2f2f7',
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+      },
     },
   },
   plugins: [],

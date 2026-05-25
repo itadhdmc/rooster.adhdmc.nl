@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { getWorkdaysInMonth, dateToISO, monthLabel } from '../../utils/dates'
 
@@ -30,20 +30,12 @@ export default function NieuwePeriode() {
   const totalShifts = workdays.length * selectedTypes.length
 
   async function handleCreate() {
-    if (!includeOchtend && !includeMiddag) {
-      setError('Selecteer minimaal één diensttype.')
-      return
-    }
+    if (!includeOchtend && !includeMiddag) { setError('Selecteer minimaal één diensttype.'); return }
     setSaving(true)
     setError('')
 
-    // Check of periode al bestaat
     const { data: existing } = await supabase
-      .from('roster_periods')
-      .select('id')
-      .eq('year', year)
-      .eq('month', month)
-      .single()
+      .from('roster_periods').select('id').eq('year', year).eq('month', month).single()
 
     if (existing) {
       setError(`Er bestaat al een periode voor ${monthLabel(year, month)}.`)
@@ -51,25 +43,13 @@ export default function NieuwePeriode() {
       return
     }
 
-    // Maak periode aan
     const { data: period, error: pErr } = await supabase
       .from('roster_periods')
-      .insert({
-        year,
-        month,
-        availability_deadline: deadline || null,
-        availability_open: true,
-      })
-      .select()
-      .single()
+      .insert({ year, month, availability_deadline: deadline || null, availability_open: true })
+      .select().single()
 
-    if (pErr || !period) {
-      setError('Kon periode niet aanmaken.')
-      setSaving(false)
-      return
-    }
+    if (pErr || !period) { setError('Kon periode niet aanmaken.'); setSaving(false); return }
 
-    // Maak diensten aan
     const shifts = []
     for (const day of workdays) {
       for (const template of selectedTypes) {
@@ -86,31 +66,28 @@ export default function NieuwePeriode() {
     }
 
     const { error: sErr } = await supabase.from('shifts').insert(shifts)
-    if (sErr) {
-      setError('Periode aangemaakt maar diensten konden niet worden aangemaakt.')
-      setSaving(false)
-      return
-    }
+    if (sErr) { setError('Periode aangemaakt maar diensten konden niet worden aangemaakt.'); setSaving(false); return }
 
     navigate(`/admin/rooster/${period.id}`)
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Nieuwe roosterperiode</h1>
-        <p className="text-gray-500 text-sm mt-1">Maak een nieuwe maand aan en genereer automatisch alle werkdagdiensten.</p>
+    <div className="max-w-xl space-y-5">
+      <div className="flex items-center gap-3">
+        <Link to="/admin" className="text-sm font-medium text-gray-400 hover:text-dark transition-colors">← Terug</Link>
+        <span className="text-gray-200">/</span>
+        <h1 className="text-xl font-bold text-dark">Nieuwe periode</h1>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+      <div className="card p-6 space-y-6">
         {/* Maand/jaar */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Maand</label>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Maand</label>
           <div className="flex gap-3">
             <select
               value={month}
               onChange={e => setMonth(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1"
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm flex-1 focus:outline-none focus:border-salmon-400"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
                 <option key={m} value={m}>{monthLabel(year, m)}</option>
@@ -119,53 +96,65 @@ export default function NieuwePeriode() {
             <select
               value={year}
               onChange={e => setYear(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-28"
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-28 focus:outline-none focus:border-salmon-400"
             >
               {[now.getFullYear(), now.getFullYear() + 1].map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
           </div>
-          <p className="text-xs text-gray-500 mt-1">{workdays.length} werkdagen in {monthLabel(year, month)}</p>
+          <p className="text-xs text-gray-400 mt-1.5">{workdays.length} werkdagen in {monthLabel(year, month)}</p>
         </div>
 
         {/* Deadline */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Deadline beschikbaarheid <span className="text-gray-400">(optioneel)</span>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+            Deadline beschikbaarheid <span className="normal-case font-normal">(optioneel)</span>
           </label>
           <input
             type="datetime-local"
             value={deadline}
             onChange={e => setDeadline(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full focus:outline-none focus:border-salmon-400"
           />
         </div>
 
         {/* Diensttypen */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Diensttypen</label>
-          <div className="space-y-2">
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Diensttypen</label>
+          <div className="space-y-2.5">
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={includeOchtend} onChange={e => setIncludeOchtend(e.target.checked)} className="w-4 h-4 text-blue-600" />
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
+                style={{ borderColor: includeOchtend ? '#f87369' : '#d1d5db', backgroundColor: includeOchtend ? '#f87369' : 'white' }}
+                onClick={() => setIncludeOchtend(!includeOchtend)}
+              >
+                {includeOchtend && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
               <div>
-                <span className="text-sm font-medium">Ochtenddienst</span>
-                <span className="text-xs text-gray-500 ml-2">08:30 – 12:30 (4u)</span>
+                <p className="text-sm font-semibold text-dark">Ochtenddienst</p>
+                <p className="text-xs text-gray-400">08:30 – 12:30 (4u)</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={includeMiddag} onChange={e => setIncludeMiddag(e.target.checked)} className="w-4 h-4 text-blue-600" />
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
+                style={{ borderColor: includeMiddag ? '#f87369' : '#d1d5db', backgroundColor: includeMiddag ? '#f87369' : 'white' }}
+                onClick={() => setIncludeMiddag(!includeMiddag)}
+              >
+                {includeMiddag && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
               <div>
-                <span className="text-sm font-medium">Middagdienst</span>
-                <span className="text-xs text-gray-500 ml-2">12:00 – 17:30 (5,5u) — 30 min overlap</span>
+                <p className="text-sm font-semibold text-dark">Middagdienst</p>
+                <p className="text-xs text-gray-400">12:00 – 17:30 (5,5u) — 30 min overlap</p>
               </div>
             </label>
           </div>
         </div>
 
-        {/* Max studenten per dienst */}
+        {/* Max studenten */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Studenten per dienst</label>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Studenten per dienst</label>
           <div className="flex items-center gap-3">
             <input
               type="number"
@@ -173,26 +162,29 @@ export default function NieuwePeriode() {
               max={10}
               value={maxStudents}
               onChange={e => setMaxStudents(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-24"
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-20 focus:outline-none focus:border-salmon-400"
             />
-            <span className="text-sm text-gray-500">student(en) per dienst</span>
+            <span className="text-sm text-gray-400">student(en) per dienst</span>
           </div>
         </div>
 
-        {/* Samenvatting */}
-        <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-800">
-          Er worden <strong>{totalShifts} diensten</strong> aangemaakt voor {monthLabel(year, month)}.
+        {/* Summary */}
+        <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: '#fff1f0', color: '#f87369' }}>
+          {totalShifts} diensten worden aangemaakt voor {monthLabel(year, month)}
           {includeOchtend && includeMiddag && ' (ochtend + middag per werkdag)'}
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">{error}</div>
         )}
 
         <button
           onClick={handleCreate}
           disabled={saving}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
+          className="w-full text-white py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-60"
+          style={{ backgroundColor: '#f87369' }}
+          onMouseEnter={e => !saving && (e.currentTarget.style.backgroundColor = '#e5574d')}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#f87369')}
         >
           {saving ? 'Aanmaken...' : `Periode ${monthLabel(year, month)} aanmaken`}
         </button>

@@ -7,6 +7,20 @@
     box-sizing: border-box;
   }
   body {
-    @apply text-gray-900 antialiased;
+    background-color: #f2f2f7;
+    color: #3c3c3b;
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-salmon-500 hover:bg-salmon-600 active:bg-salmon-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply text-dark hover:bg-gray-100 font-medium px-4 py-2 rounded-xl transition-colors;
+  }
+  .card {
+    @apply bg-white rounded-2xl border border-gray-200;
   }
 }

@@ -19,15 +19,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Wacht tot auth klaar is
     if (authLoading) return
-
-    // Auth klaar maar geen profiel - stop laden
-    if (!profile) {
-      setLoading(false)
-      return
-    }
-
+    if (!profile) { setLoading(false); return }
     loadDashboard()
   }, [profile, authLoading])
 
@@ -38,15 +31,8 @@ export default function Dashboard() {
       const month = now.getMonth() + 1
 
       const [{ data: periods }, { data: assignments }] = await Promise.all([
-        supabase
-          .from('roster_periods')
-          .select('*')
-          .eq('year', year)
-          .order('month'),
-        supabase
-          .from('assignments')
-          .select('*, shifts(*)')
-          .eq('user_id', profile!.id),
+        supabase.from('roster_periods').select('*').eq('year', year).order('month'),
+        supabase.from('assignments').select('*, shifts(*)').eq('user_id', profile!.id),
       ])
 
       const openPeriod = periods?.find(p => p.availability_open || p.second_round_open)
@@ -61,8 +47,7 @@ export default function Dashboard() {
         const upcoming = assignments
           .filter(a => {
             const shift = (a as any).shifts as Shift
-            if (!shift) return false
-            return new Date(shift.shift_date) >= today
+            return shift && new Date(shift.shift_date) >= today
           })
           .sort((a, b) => {
             const da = new Date((a as any).shifts.shift_date)
@@ -95,10 +80,7 @@ export default function Dashboard() {
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-sm text-gray-500">Laden...</p>
-        </div>
+        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
       </div>
     )
   }
@@ -106,112 +88,133 @@ export default function Dashboard() {
   if (!profile) {
     return (
       <div className="text-center py-16">
-        <p className="text-gray-600">Profiel niet gevonden. Probeer opnieuw in te loggen.</p>
+        <p className="text-gray-500">Profiel niet gevonden. Probeer opnieuw in te loggen.</p>
       </div>
     )
   }
 
-  const shiftBadge = (type: string) =>
-    type === 'ochtend' ? 'bg-amber-100 text-amber-800' : 'bg-purple-100 text-purple-800'
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Hallo, {profile.full_name?.split(' ')[0] || 'daar'} 👋
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-        </p>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-dark">
+            Hallo, {profile.full_name?.split(' ')[0] || 'daar'}
+          </h1>
+          <p className="text-gray-400 text-sm mt-0.5">
+            {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        {isAdmin && (
+          <Link
+            to="/admin"
+            className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-colors"
+            style={{ backgroundColor: '#3c3c3b' }}
+          >
+            Beheerpaneel →
+          </Link>
+        )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Uren deze week" value={`${weekHours}u`} color="blue" />
-        <StatCard label="Uren deze maand" value={`${monthHours}u`} color="green" />
-        <StatCard label="Contract min" value={`${profile.contract_min_hours}u/week`} color="gray" />
-        <StatCard label="Contract max" value={`${profile.contract_max_hours}u/week`} color="gray" />
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="Uren deze week" value={`${weekHours}u`} accent="#f87369" />
+        <StatCard label="Uren deze maand" value={`${monthHours}u`} accent="#3c3c3b" />
+        <StatCard label="Contract min" value={`${profile.contract_min_hours}u/w`} accent="#9ca3af" />
+        <StatCard label="Contract max" value={`${profile.contract_max_hours}u/w`} accent="#9ca3af" />
       </div>
 
-      {/* Open ronde */}
+      {/* Open ronde banner */}
       {activePeriod && (activePeriod.availability_open || activePeriod.second_round_open) && (
-        <div className={`rounded-xl p-5 border-2 ${activePeriod.second_round_open ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">
-                {activePeriod.second_round_open ? '🔄 2e ronde open' : '📋 Beschikbaarheid invullen'}
+        <div
+          className="rounded-2xl p-5 flex items-start justify-between gap-4"
+          style={{ backgroundColor: '#f87369' }}
+        >
+          <div>
+            <p className="font-bold text-white text-base">
+              {activePeriod.second_round_open ? '2e ronde open' : 'Beschikbaarheid invullen'}
+            </p>
+            <p className="text-white/80 text-sm mt-1">
+              {activePeriod.second_round_open
+                ? `Er zijn nog open diensten voor ${monthLabel(activePeriod.year, activePeriod.month)}.`
+                : `Geef je beschikbaarheid door voor ${monthLabel(activePeriod.year, activePeriod.month)}.`}
+            </p>
+            {activePeriod.availability_deadline && (
+              <p className="text-white/60 text-xs mt-1">
+                Deadline: {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
               </p>
-              <p className="text-sm text-gray-600 mt-1">
-                {activePeriod.second_round_open
-                  ? `Er zijn nog open diensten voor ${monthLabel(activePeriod.year, activePeriod.month)}.`
-                  : `Geef je beschikbaarheid door voor ${monthLabel(activePeriod.year, activePeriod.month)}.`}
-              </p>
-              {activePeriod.availability_deadline && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Deadline: {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              )}
-            </div>
-            <Link to="/beschikbaarheid" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors whitespace-nowrap">
-              Invullen →
-            </Link>
+            )}
           </div>
+          <Link
+            to="/beschikbaarheid"
+            className="flex-shrink-0 bg-white font-semibold text-sm px-4 py-2 rounded-xl transition-colors hover:bg-gray-50"
+            style={{ color: '#f87369' }}
+          >
+            Invullen →
+          </Link>
         </div>
       )}
 
       {/* Aankomende diensten */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-gray-900">Aankomende diensten</h2>
-          <Link to="/mijn-rooster" className="text-blue-600 text-sm hover:underline">Alles bekijken →</Link>
+          <h2 className="font-bold text-dark text-base">Aankomende diensten</h2>
+          <Link to="/mijn-rooster" className="text-sm font-medium" style={{ color: '#f87369' }}>
+            Alles bekijken →
+          </Link>
         </div>
+
         {upcomingShifts.length === 0 ? (
-          <div className="text-center py-8 bg-white rounded-xl border border-gray-200 text-gray-500 text-sm">
-            Geen ingeplande diensten.
+          <div className="card p-10 text-center">
+            <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p className="text-gray-500 font-medium">Geen ingeplande diensten</p>
+            <p className="text-gray-400 text-sm mt-1">Je bent nog niet ingeroosterd.</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {upcomingShifts.map(({ shift }) => (
-              <div key={shift.id} className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900 capitalize">{formatDate(shift.shift_date)}</p>
-                  <p className="text-sm text-gray-500">{shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} ({shift.duration_hours}u)</p>
+          <div className="card overflow-hidden">
+            <div className="divide-y divide-gray-50">
+              {upcomingShifts.map(({ shift }) => (
+                <div key={shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
+                      style={{ backgroundColor: shift.shift_type === 'ochtend' ? '#f87369' : '#3c3c3b' }}
+                    >
+                      {new Date(shift.shift_date).getDate()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-dark capitalize text-sm">{formatDate(shift.shift_date)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} · {shift.duration_hours}u
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${
+                    shift.shift_type === 'ochtend'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    {shift.shift_type}
+                  </span>
                 </div>
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${shiftBadge(shift.shift_type)}`}>
-                  {shift.shift_type}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
-
-      {/* Admin shortcut */}
-      {isAdmin && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-yellow-900">Beheerdersweergave</p>
-            <p className="text-sm text-yellow-700">Beheer roosters, studenten en periodes.</p>
-          </div>
-          <Link to="/admin" className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-600 transition-colors">
-            Naar beheer →
-          </Link>
-        </div>
-      )}
     </div>
   )
 }
 
-function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
-  const colors: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-100',
-    green: 'bg-green-50 text-green-700 border-green-100',
-    gray: 'bg-gray-50 text-gray-700 border-gray-100',
-  }
+function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <div className={`rounded-xl border p-4 ${colors[color]}`}>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs mt-1 opacity-75">{label}</p>
+    <div className="card p-4">
+      <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
+      <p className="text-xs text-gray-400 mt-1">{label}</p>
     </div>
   )
 }

@@ -11,10 +11,7 @@ export default function Studenten() {
   useEffect(() => { loadStudents() }, [])
 
   async function loadStudents() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('full_name')
+    const { data } = await supabase.from('profiles').select('*').order('full_name')
     setStudents(data || [])
     setLoading(false)
   }
@@ -43,30 +40,28 @@ export default function Studenten() {
   const activeStudents = students.filter(s => s.role === 'student' && s.active)
   const inactiveStudents = students.filter(s => s.role === 'student' && !s.active)
 
+  const rowProps = { editing, onEdit: (s: Profile) => { setEditing(s.id); setEditData({ full_name: s.full_name, contract_min_hours: s.contract_min_hours, contract_max_hours: s.contract_max_hours }) }, onSave: saveEdit, editData, setEditData, onToggle: toggleActive, onSetAdmin: setAdmin }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Studenten beheren</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-dark">Studenten</h1>
+        <p className="text-gray-400 text-sm mt-0.5">Beheer rollen en contracturen</p>
+      </div>
 
       <Section title={`Admins (${admins.length})`}>
-        {admins.map(s => <StudentRow key={s.id} student={s} onToggle={toggleActive} isEditing={editing === s.id}
-          onEdit={() => { setEditing(s.id); setEditData({ full_name: s.full_name, contract_min_hours: s.contract_min_hours, contract_max_hours: s.contract_max_hours }) }}
-          onSave={() => saveEdit(s.id)} editData={editData} setEditData={setEditData} onSetAdmin={setAdmin} />)}
+        {admins.map(s => <StudentRow key={s.id} student={s} {...rowProps} />)}
       </Section>
 
       <Section title={`Actieve studenten (${activeStudents.length})`}>
         {activeStudents.length === 0
-          ? <p className="text-sm text-gray-500 py-4 text-center">Geen actieve studenten.</p>
-          : activeStudents.map(s => <StudentRow key={s.id} student={s} onToggle={toggleActive} isEditing={editing === s.id}
-              onEdit={() => { setEditing(s.id); setEditData({ full_name: s.full_name, contract_min_hours: s.contract_min_hours, contract_max_hours: s.contract_max_hours }) }}
-              onSave={() => saveEdit(s.id)} editData={editData} setEditData={setEditData} onSetAdmin={setAdmin} />)
-        }
+          ? <p className="text-sm text-gray-400 py-6 text-center">Geen actieve studenten.</p>
+          : activeStudents.map(s => <StudentRow key={s.id} student={s} {...rowProps} />)}
       </Section>
 
       {inactiveStudents.length > 0 && (
         <Section title={`Inactief (${inactiveStudents.length})`}>
-          {inactiveStudents.map(s => <StudentRow key={s.id} student={s} onToggle={toggleActive} isEditing={editing === s.id}
-            onEdit={() => { setEditing(s.id); setEditData({ full_name: s.full_name, contract_min_hours: s.contract_min_hours, contract_max_hours: s.contract_max_hours }) }}
-            onSave={() => saveEdit(s.id)} editData={editData} setEditData={setEditData} onSetAdmin={setAdmin} />)}
+          {inactiveStudents.map(s => <StudentRow key={s.id} student={s} {...rowProps} />)}
         </Section>
       )}
     </div>
@@ -76,77 +71,86 @@ export default function Studenten() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wide">{title}</h2>
-      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {children}
-      </div>
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{title}</p>
+      <div className="card divide-y divide-gray-50">{children}</div>
     </div>
   )
 }
 
 function StudentRow({
-  student, onToggle, isEditing, onEdit, onSave, editData, setEditData, onSetAdmin
+  student, editing, onEdit, onSave, editData, setEditData, onToggle, onSetAdmin,
 }: {
   student: Profile
-  onToggle: (s: Profile) => void
-  isEditing: boolean
-  onEdit: () => void
-  onSave: () => void
+  editing: string | null
+  onEdit: (s: Profile) => void
+  onSave: (id: string) => void
   editData: Partial<Profile>
   setEditData: (d: Partial<Profile>) => void
+  onToggle: (s: Profile) => void
   onSetAdmin: (s: Profile) => void
 }) {
+  const isEditing = editing === student.id
+
   return (
-    <div className="px-4 py-3">
+    <div className="px-5 py-4">
       {isEditing ? (
         <div className="flex flex-wrap items-center gap-3">
           <input
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-32"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm flex-1 min-w-32 focus:outline-none focus:border-salmon-400"
             value={editData.full_name || ''}
             onChange={e => setEditData({ ...editData, full_name: e.target.value })}
             placeholder="Naam"
           />
           <div className="flex items-center gap-2 text-sm">
-            <label className="text-gray-500 text-xs">Min:</label>
-            <input type="number" min={0} max={40} className="border border-gray-200 rounded px-2 py-1 text-sm w-16"
+            <span className="text-xs text-gray-400">Min</span>
+            <input type="number" min={0} max={40} className="border border-gray-200 rounded-xl px-2 py-2 text-sm w-16 focus:outline-none focus:border-salmon-400"
               value={editData.contract_min_hours} onChange={e => setEditData({ ...editData, contract_min_hours: Number(e.target.value) })} />
-            <label className="text-gray-500 text-xs">Max:</label>
-            <input type="number" min={0} max={40} className="border border-gray-200 rounded px-2 py-1 text-sm w-16"
+            <span className="text-xs text-gray-400">Max</span>
+            <input type="number" min={0} max={40} className="border border-gray-200 rounded-xl px-2 py-2 text-sm w-16 focus:outline-none focus:border-salmon-400"
               value={editData.contract_max_hours} onChange={e => setEditData({ ...editData, contract_max_hours: Number(e.target.value) })} />
-            <span className="text-gray-400 text-xs">uur/week</span>
+            <span className="text-xs text-gray-400">u/week</span>
           </div>
           <div className="flex gap-2">
-            <button onClick={onSave} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">Opslaan</button>
-            <button onClick={() => setEditData({})} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-200">Annuleer</button>
+            <button onClick={() => onSave(student.id)} className="text-xs text-white px-3 py-2 rounded-xl font-semibold" style={{ backgroundColor: '#f87369' }}>
+              Opslaan
+            </button>
+            <button onClick={() => setEditData({})} className="text-xs bg-gray-100 text-gray-600 px-3 py-2 rounded-xl hover:bg-gray-200 font-medium">
+              Annuleer
+            </button>
           </div>
         </div>
       ) : (
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              student.role === 'admin' ? 'bg-yellow-200 text-yellow-800' : 'bg-blue-100 text-blue-700'
-            }`}>
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+              style={{ backgroundColor: student.role === 'admin' ? '#f87369' : '#3c3c3b' }}
+            >
               {(student.full_name || student.email)[0].toUpperCase()}
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">{student.full_name || <span className="text-gray-400">Geen naam</span>}</p>
-              <p className="text-xs text-gray-500">{student.email}</p>
+              <p className="text-sm font-semibold text-dark">
+                {student.full_name || <span className="text-gray-400 font-normal">Geen naam</span>}
+              </p>
+              <p className="text-xs text-gray-400">{student.email}</p>
             </div>
             {!student.active && (
-              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inactief</span>
+              <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Inactief</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 hidden sm:block">
-              {student.contract_min_hours}–{student.contract_max_hours}u/week
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400 hidden sm:block">
+              {student.contract_min_hours}–{student.contract_max_hours}u/w
             </span>
-            <button onClick={onEdit} className="text-xs text-blue-600 hover:underline">Bewerken</button>
-            <button onClick={() => onToggle(student)} className="text-xs text-gray-500 hover:text-gray-700">
+            <button onClick={() => onEdit(student)} className="text-xs font-semibold" style={{ color: '#f87369' }}>
+              Bewerken
+            </button>
+            <button onClick={() => onToggle(student)} className="text-xs text-gray-400 hover:text-dark transition-colors">
               {student.active ? 'Deactiveer' : 'Activeer'}
             </button>
             {student.role === 'student' && (
-              <button onClick={() => onSetAdmin(student)} className="text-xs text-orange-600 hover:underline hidden sm:block">
-                Admin maken
+              <button onClick={() => onSetAdmin(student)} className="text-xs text-amber-600 hover:text-amber-700 hidden sm:block font-medium">
+                Admin
               </button>
             )}
           </div>
@@ -159,7 +163,7 @@ function StudentRow({
 function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
     </div>
   )
 }
