@@ -51,7 +51,11 @@ export default function MijnRooster() {
         if (!shift) return false
         return shift.shift_date >= start && shift.shift_date <= end
       })
-      .sort((a, b) => (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date))
+      .sort((a, b) => {
+        // Approved first, then pending; within each group by date
+        if (a.status !== b.status) return a.status === 'approved' ? -1 : 1
+        return (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date)
+      })
       .map(a => ({ ...a, shift: (a as any).shifts as Shift }))
 
     setAssignments(enriched)
@@ -87,8 +91,10 @@ export default function MijnRooster() {
     for (const a of unsynced) await syncShift(a)
   }
 
-  const totalHours = assignments.reduce((sum, a) => sum + Number(a.shift.duration_hours), 0)
-  const syncedCount = assignments.filter(a => a.google_calendar_event_id).length
+  const approvedAssignments = assignments.filter(a => a.status === 'approved')
+  const pendingAssignments = assignments.filter(a => a.status === 'pending')
+  const totalHours = approvedAssignments.reduce((sum, a) => sum + Number(a.shift.duration_hours), 0)
+  const syncedCount = approvedAssignments.filter(a => a.google_calendar_event_id).length
   const [year, month] = selectedMonth.split('-').map(Number)
 
   function generateMonthOptions() {
@@ -133,33 +139,62 @@ export default function MijnRooster() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="card p-4">
-          <p className="text-2xl font-bold" style={{ color: '#f87369' }}>{assignments.length}</p>
-          <p className="text-xs text-gray-400 mt-1">Diensten</p>
+          <p className="text-2xl font-bold" style={{ color: '#f87369' }}>{approvedAssignments.length}</p>
+          <p className="text-xs text-gray-400 mt-1">Ingeroosterd</p>
         </div>
         <div className="card p-4">
           <p className="text-2xl font-bold text-dark">{totalHours}u</p>
           <p className="text-xs text-gray-400 mt-1">Totaal uren</p>
         </div>
         <div className="card p-4">
-          <p className="text-2xl font-bold text-dark">{syncedCount}/{assignments.length}</p>
-          <p className="text-xs text-gray-400 mt-1">In agenda</p>
+          <p className="text-2xl font-bold text-amber-600">{pendingAssignments.length}</p>
+          <p className="text-xs text-gray-400 mt-1">Wacht op goedkeuring</p>
         </div>
       </div>
 
+      {/* Pending aanvragen */}
+      {pendingAssignments.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-50 bg-amber-50">
+            <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Wacht op goedkeuring</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {pendingAssignments.map(a => (
+              <div key={a.shift.id} className="px-5 py-4 flex items-center justify-between gap-3 opacity-70">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-700 text-xs font-bold">
+                    {new Date(a.shift.shift_date).getDate()}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-dark capitalize text-sm">{formatDate(a.shift.shift_date)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} · {a.shift.duration_hours}u
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                  ⏳ Aangevraagd
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sync bar */}
-      {assignments.length > 0 && (
+      {approvedAssignments.length > 0 && (
         <div className="card p-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-dark">Google Agenda synchroniseren</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {syncedCount === assignments.length
+              {syncedCount === approvedAssignments.length
                 ? '✓ Alle diensten staan in je agenda'
-                : `${assignments.length - syncedCount} dienst${assignments.length - syncedCount !== 1 ? 'en' : ''} nog niet gesynchroniseerd`}
+                : `${approvedAssignments.length - syncedCount} dienst${approvedAssignments.length - syncedCount !== 1 ? 'en' : ''} nog niet gesynchroniseerd`}
             </p>
           </div>
           <button
             onClick={syncAll}
-            disabled={!googleToken || syncedCount === assignments.length}
+            disabled={!googleToken || syncedCount === approvedAssignments.length}
             className="flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             style={{ backgroundColor: '#3c3c3b' }}
           >
@@ -174,20 +209,22 @@ export default function MijnRooster() {
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
         </div>
-      ) : assignments.length === 0 ? (
+      ) : approvedAssignments.length === 0 ? (
         <div className="card p-16 text-center">
           <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          <p className="text-gray-500 font-semibold">Geen diensten in {monthLabel(year, month)}</p>
-          <p className="text-gray-400 text-sm mt-1">Je bent nog niet ingeroosterd voor deze maand.</p>
+          <p className="text-gray-500 font-semibold">Geen goedgekeurde diensten in {monthLabel(year, month)}</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {pendingAssignments.length > 0 ? 'Je hebt diensten aangevraagd die nog goedgekeurd worden.' : 'Je bent nog niet ingeroosterd voor deze maand.'}
+          </p>
         </div>
       ) : (
         <div className="card overflow-hidden">
           <div className="divide-y divide-gray-50">
-            {assignments.map(a => (
+            {approvedAssignments.map(a => (
               <div key={a.shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-4">
                   <div

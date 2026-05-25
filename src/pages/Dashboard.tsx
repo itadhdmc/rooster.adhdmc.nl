@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-import { RosterPeriod, Shift, Availability } from '../types'
+import { RosterPeriod, Shift, Assignment } from '../types'
 import { monthLabel, formatDate } from '../utils/dates'
 
 interface UpcomingShift {
@@ -13,7 +13,7 @@ interface UpcomingShift {
 export default function Dashboard() {
   const { profile, isAdmin, loading: authLoading } = useAuth()
   const [activePeriod, setActivePeriod] = useState<RosterPeriod | null>(null)
-  const [myAvailability, setMyAvailability] = useState<Availability[]>([])
+  const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([])
   const [upcomingShifts, setUpcomingShifts] = useState<UpcomingShift[]>([])
   const [weekHours, setWeekHours] = useState(0)
   const [monthHours, setMonthHours] = useState(0)
@@ -37,20 +37,7 @@ export default function Dashboard() {
       ])
 
       const openPeriod = periods?.find(p => p.availability_open || p.second_round_open)
-      const active = openPeriod || periods?.[0] || null
-      setActivePeriod(active)
-
-      // Laad ingevulde beschikbaarheid voor de actieve periode
-      if (active && (active.availability_open || active.second_round_open)) {
-        const { data: av } = await supabase
-          .from('availability')
-          .select('*')
-          .eq('user_id', profile!.id)
-          .eq('period_id', active.id)
-        setMyAvailability(av || [])
-      } else {
-        setMyAvailability([])
-      }
+      setActivePeriod(openPeriod || periods?.[0] || null)
 
       if (assignments && assignments.length > 0) {
         const today = new Date()
@@ -58,23 +45,26 @@ export default function Dashboard() {
         const weekEnd = new Date(today)
         weekEnd.setDate(weekEnd.getDate() + 7)
 
+        // Pending = aangevraagd, wacht op goedkeuring
+        const pending = assignments.filter(a => a.status === 'pending')
+        setPendingAssignments(pending)
+
+        // Upcoming = goedgekeurde toekomstige diensten
         const upcoming = assignments
           .filter(a => {
             const shift = (a as any).shifts as Shift
-            return shift && new Date(shift.shift_date) >= today
+            return shift && new Date(shift.shift_date) >= today && a.status === 'approved'
           })
-          .sort((a, b) => {
-            const da = new Date((a as any).shifts.shift_date)
-            const db = new Date((b as any).shifts.shift_date)
-            return da.getTime() - db.getTime()
-          })
+          .sort((a, b) => (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date))
           .slice(0, 5)
           .map(a => ({ shift: (a as any).shifts as Shift, assigned_at: a.assigned_at }))
 
         setUpcomingShifts(upcoming)
 
+        // Uren tellen (alleen goedgekeurde)
         let wh = 0, mh = 0
         for (const a of assignments) {
+          if (a.status !== 'approved') continue
           const shift = (a as any).shifts as Shift
           if (!shift) continue
           const d = new Date(shift.shift_date)
@@ -83,6 +73,8 @@ export default function Dashboard() {
         }
         setWeekHours(wh)
         setMonthHours(mh)
+      } else {
+        setPendingAssignments([])
       }
     } catch (err) {
       console.error('Dashboard fout:', err)
@@ -108,9 +100,6 @@ export default function Dashboard() {
     )
   }
 
-  const ochtendenCount = myAvailability.filter(a => a.shift_type === 'ochtend').length
-  const middagenCount = myAvailability.filter(a => a.shift_type === 'middag').length
-  const hasSubmittedAvailability = myAvailability.length > 0
   const isOpenPeriod = activePeriod && (activePeriod.availability_open || activePeriod.second_round_open)
 
   return (
@@ -126,11 +115,9 @@ export default function Dashboard() {
           </p>
         </div>
         {isAdmin && (
-          <Link
-            to="/admin"
-            className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-colors"
-            style={{ backgroundColor: '#3c3c3b' }}
-          >
+          <Link to="/admin"
+            className="text-sm font-semibold text-white px-4 py-2 rounded-xl"
+            style={{ backgroundColor: '#3c3c3b' }}>
             Beheerpaneel →
           </Link>
         )}
@@ -144,62 +131,46 @@ export default function Dashboard() {
         <StatCard label="Contract max" value={`${profile.contract_max_hours}u/w`} accent="#9ca3af" />
       </div>
 
-      {/* Open ronde banner */}
-      {isOpenPeriod && activePeriod && (
-        hasSubmittedAvailability ? (
-          // Bevestiging: al ingevuld
-          <div className="rounded-2xl p-5 flex items-start justify-between gap-4 bg-white border-2 border-green-200">
-            <div>
-              <p className="font-bold text-dark text-base flex items-center gap-2">
-                <span className="text-green-500">✓</span>
-                Beschikbaarheid ingevuld
-              </p>
-              <p className="text-gray-500 text-sm mt-1">
-                Voor <strong>{monthLabel(activePeriod.year, activePeriod.month)}</strong>: {ochtendenCount} ochtend{ochtendenCount !== 1 ? 'en' : ''} en {middagenCount} middag{middagenCount !== 1 ? 'en' : ''}
-              </p>
-              {activePeriod.availability_deadline && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Deadline: {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              )}
-            </div>
-            <Link
-              to="/beschikbaarheid"
-              className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Wijzigen
-            </Link>
+      {/* Pending aanvragen banner */}
+      {pendingAssignments.length > 0 && (
+        <div className="bg-white border-2 border-amber-200 rounded-2xl p-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="font-bold text-dark flex items-center gap-2">
+              ⏳ {pendingAssignments.length} dienst{pendingAssignments.length !== 1 ? 'en' : ''} aangevraagd
+            </p>
+            <p className="text-gray-500 text-sm mt-1">
+              Wacht op goedkeuring van de admin.
+            </p>
           </div>
-        ) : (
-          // Call to action: nog niet ingevuld
-          <div
-            className="rounded-2xl p-5 flex items-start justify-between gap-4"
-            style={{ backgroundColor: '#f87369' }}
-          >
-            <div>
-              <p className="font-bold text-white text-base">
-                {activePeriod.second_round_open ? '2e ronde open' : 'Beschikbaarheid invullen'}
+          <Link to="/beschikbaarheid"
+            className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+            Bekijken
+          </Link>
+        </div>
+      )}
+
+      {/* Open periode banner */}
+      {isOpenPeriod && activePeriod && pendingAssignments.length === 0 && upcomingShifts.length === 0 && (
+        <div className="rounded-2xl p-5 flex items-start justify-between gap-4" style={{ backgroundColor: '#f87369' }}>
+          <div>
+            <p className="font-bold text-white text-base">
+              {activePeriod.second_round_open ? '2e ronde open' : 'Diensten beschikbaar om je voor in te schrijven'}
+            </p>
+            <p className="text-white/80 text-sm mt-1">
+              Schrijf je in voor de diensten die je wilt werken in {monthLabel(activePeriod.year, activePeriod.month)}.
+            </p>
+            {activePeriod.availability_deadline && (
+              <p className="text-white/60 text-xs mt-1">
+                Deadline: {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
               </p>
-              <p className="text-white/80 text-sm mt-1">
-                {activePeriod.second_round_open
-                  ? `Er zijn nog open diensten voor ${monthLabel(activePeriod.year, activePeriod.month)}.`
-                  : `Geef je beschikbaarheid door voor ${monthLabel(activePeriod.year, activePeriod.month)}.`}
-              </p>
-              {activePeriod.availability_deadline && (
-                <p className="text-white/60 text-xs mt-1">
-                  Deadline: {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              )}
-            </div>
-            <Link
-              to="/beschikbaarheid"
-              className="flex-shrink-0 bg-white font-semibold text-sm px-4 py-2 rounded-xl transition-colors hover:bg-gray-50"
-              style={{ color: '#f87369' }}
-            >
-              Invullen →
-            </Link>
+            )}
           </div>
-        )
+          <Link to="/beschikbaarheid"
+            className="flex-shrink-0 bg-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors"
+            style={{ color: '#f87369' }}>
+            Inschrijven →
+          </Link>
+        </div>
       )}
 
       {/* Aankomende diensten */}
@@ -218,11 +189,11 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <p className="text-gray-500 font-medium">Nog geen ingeplande diensten</p>
+            <p className="text-gray-500 font-medium">Nog geen goedgekeurde diensten</p>
             <p className="text-gray-400 text-sm mt-1">
-              {hasSubmittedAvailability
-                ? 'De admin is bezig met het samenstellen van het rooster.'
-                : 'Vul je beschikbaarheid in zodat je ingeroosterd kunt worden.'}
+              {pendingAssignments.length > 0
+                ? 'De admin keurt je aanvragen binnenkort goed.'
+                : isOpenPeriod ? 'Schrijf je in voor diensten via de knop hierboven.' : 'Er zijn momenteel geen open periodes.'}
             </p>
           </div>
         ) : (
@@ -231,10 +202,8 @@ export default function Dashboard() {
               {upcomingShifts.map(({ shift }) => (
                 <div key={shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-4">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
-                      style={{ backgroundColor: shift.shift_type === 'ochtend' ? '#f87369' : '#3c3c3b' }}
-                    >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
+                      style={{ backgroundColor: shift.shift_type === 'ochtend' ? '#f87369' : '#3c3c3b' }}>
                       {new Date(shift.shift_date).getDate()}
                     </div>
                     <div>

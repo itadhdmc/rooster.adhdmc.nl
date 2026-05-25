@@ -9,7 +9,7 @@ interface LayoutProps {
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: HomeIcon },
-  { to: '/beschikbaarheid', label: 'Beschikbaarheid', icon: CalendarIcon },
+  { to: '/beschikbaarheid', label: 'Inschrijven', icon: CalendarIcon },
   { to: '/mijn-rooster', label: 'Mijn rooster', icon: ClockIcon },
 ]
 

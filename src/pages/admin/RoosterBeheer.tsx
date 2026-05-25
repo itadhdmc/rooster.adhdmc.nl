@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ShiftWithAssignments, Profile, RosterPeriod, Availability } from '../../types'
+import { ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
 import { formatDate, monthLabel, dateToISO, getWeeksInMonth } from '../../utils/dates'
 
 export default function RoosterBeheer() {
@@ -9,65 +9,56 @@ export default function RoosterBeheer() {
   const [period, setPeriod] = useState<RosterPeriod | null>(null)
   const [shifts, setShifts] = useState<ShiftWithAssignments[]>([])
   const [students, setStudents] = useState<Profile[]>([])
-  const [availability, setAvailability] = useState<Availability[]>([])
-  const [studentHours, setStudentHours] = useState<Record<string, number>>({})
-  const [studentDates, setStudentDates] = useState<Record<string, Set<string>>>({})
   const [loading, setLoading] = useState(true)
-  const [assigningShift, setAssigningShift] = useState<string | null>(null)
+  const [processing, setProcessing] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   useEffect(() => { loadAll() }, [periodId])
 
   async function loadAll() {
     if (!periodId) return
-    const [{ data: p }, { data: s }, { data: st }, { data: av }, { data: assignments }] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: st }] = await Promise.all([
       supabase.from('roster_periods').select('*').eq('id', periodId).single(),
       supabase.from('shifts_with_assignments').select('*').eq('period_id', periodId).order('shift_date').order('shift_type'),
       supabase.from('profiles').select('*').eq('role', 'student').eq('active', true),
-      supabase.from('availability').select('*').eq('period_id', periodId),
-      supabase.from('assignments').select('*, shifts(duration_hours, period_id, shift_date)').eq('shifts.period_id', periodId),
     ])
-
     setPeriod(p)
     setShifts(s || [])
     setStudents(st || [])
-    setAvailability(av || [])
-
-    const hours: Record<string, number> = {}
-    const dates: Record<string, Set<string>> = {}
-    for (const a of assignments || []) {
-      const shift = (a as any).shifts
-      if (!shift || shift.period_id !== periodId) continue
-      hours[a.user_id] = (hours[a.user_id] || 0) + shift.duration_hours
-      if (!dates[a.user_id]) dates[a.user_id] = new Set()
-      dates[a.user_id].add(shift.shift_date)
-    }
-    setStudentHours(hours)
-    setStudentDates(dates)
     setLoading(false)
   }
 
-  async function assignStudent(shiftId: string, userId: string) {
-    setAssigningShift(shiftId)
-    const { error } = await supabase.from('assignments').insert({ shift_id: shiftId, user_id: userId })
-    if (error) alert('Fout bij inroosteren: ' + error.message)
+  async function approveAssignment(assignmentId: string) {
+    setProcessing(assignmentId)
+    await supabase.from('assignments').update({ status: 'approved' }).eq('id', assignmentId)
     await loadAll()
-    setAssigningShift(null)
+    setProcessing(null)
   }
 
-  async function removeAssignment(shiftId: string, userId: string) {
-    await supabase.from('assignments').delete().eq('shift_id', shiftId).eq('user_id', userId)
+  async function rejectAssignment(assignmentId: string) {
+    setProcessing(assignmentId)
+    await supabase.from('assignments').delete().eq('id', assignmentId)
     await loadAll()
+    setProcessing(null)
   }
 
-  function availableStudentsForShift(shift: ShiftWithAssignments): Profile[] {
-    const availableIds = new Set(
-      availability
-        .filter(a => a.shift_date === shift.shift_date && a.shift_type === shift.shift_type)
-        .map(a => a.user_id)
-    )
-    const assignedIds = new Set((shift.assigned_students || []).map(s => s.user_id))
-    return students.filter(s => availableIds.has(s.id) && !assignedIds.has(s.id))
+  async function removeAssignment(assignmentId: string) {
+    setProcessing(assignmentId)
+    await supabase.from('assignments').delete().eq('id', assignmentId)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  async function directAssign(shiftId: string, userId: string) {
+    setProcessing(shiftId + userId)
+    const { error } = await supabase.from('assignments').insert({
+      shift_id: shiftId,
+      user_id: userId,
+      status: 'approved',
+    })
+    if (error) alert('Fout: ' + error.message)
+    await loadAll()
+    setProcessing(null)
   }
 
   const shiftsByDate = useMemo(() =>
@@ -83,6 +74,16 @@ export default function RoosterBeheer() {
     ? shifts.filter(s => s.shift_date === selectedDate).sort((a, b) => a.shift_type.localeCompare(b.shift_type))
     : []
 
+  // Students not yet assigned or pending for a given shift
+  function unassignedStudents(shift: ShiftWithAssignments): Profile[] {
+    const takenIds = new Set((shift.assigned_students || []).map(s => s.user_id))
+    return students.filter(s => !takenIds.has(s.id))
+  }
+
+  // Total pending requests across all shifts
+  const totalPending = shifts.reduce((n, s) =>
+    n + (s.assigned_students || []).filter(a => a.status === 'pending').length, 0)
+
   if (loading) return <Spinner />
   if (!period) return <div className="text-red-500 p-4">Periode niet gevonden.</div>
 
@@ -93,7 +94,6 @@ export default function RoosterBeheer() {
 
   return (
     <div className="space-y-5">
-      {/* Breadcrumb + title */}
       <div className="flex items-center gap-2 text-sm">
         <Link to="/admin" className="text-gray-400 hover:text-dark transition-colors">← Terug</Link>
         <span className="text-gray-200">/</span>
@@ -118,9 +118,22 @@ export default function RoosterBeheer() {
         </div>
       </div>
 
+      {/* Pending aanvragen banner */}
+      {totalPending > 0 && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <span className="text-xl">⏳</span>
+          <div>
+            <p className="font-bold text-amber-800 text-sm">
+              {totalPending} aanvra{totalPending === 1 ? 'ag' : 'gen'} wacht op goedkeuring
+            </p>
+            <p className="text-amber-700 text-xs mt-0.5">Klik op een dag om goedkeuring te geven.</p>
+          </div>
+        </div>
+      )}
+
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-gray-500">
-        <span>Klik op een dag om in te roosteren:</span>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+        <span>Klik op een dag:</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-green-500 inline-block" /> Vol</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-amber-400 inline-block" /> Gedeeltelijk</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#f87369' }} /> Leeg</span>
@@ -128,7 +141,6 @@ export default function RoosterBeheer() {
 
       {/* Calendar grid */}
       <div className="card overflow-hidden">
-        {/* Day headers */}
         <div className="grid grid-cols-5 border-b border-gray-100 bg-surface">
           {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag'].map((d, i) => (
             <div key={d} className={`py-2 text-center text-xs font-bold text-gray-400 ${i < 4 ? 'border-r border-gray-100' : ''}`}>
@@ -137,36 +149,39 @@ export default function RoosterBeheer() {
             </div>
           ))}
         </div>
-
-        {/* Week rows */}
         <div className="divide-y divide-gray-100">
           {weeks.map((week, wi) => (
             <div key={wi} className="grid grid-cols-5 divide-x divide-gray-100">
               {week.map((day, di) => {
-                if (!day) {
-                  return <div key={di} className="p-2 sm:p-3 bg-gray-50/50 min-h-[80px]" />
-                }
+                if (!day) return <div key={di} className="p-2 sm:p-3 bg-gray-50/50 min-h-[80px]" />
                 const iso = dateToISO(day)
                 const dayShifts = shiftsByDate[iso] || {}
                 const morning = dayShifts['ochtend']
                 const afternoon = dayShifts['middag']
                 const isSelected = selectedDate === iso
-                const todayISO = new Date().toISOString().split('T')[0]
-                const isToday = iso === todayISO
+                const isToday = iso === new Date().toISOString().split('T')[0]
+                // Show badge if any pending requests this day
+                const dayPending = [morning, afternoon].filter(Boolean).reduce((n, s) =>
+                  n + (s!.assigned_students || []).filter(a => a.status === 'pending').length, 0)
 
                 return (
                   <button
                     key={iso}
                     onClick={() => setSelectedDate(isSelected ? null : iso)}
-                    className={`p-2 sm:p-3 text-left transition-colors min-h-[80px] w-full ${
-                      isSelected
-                        ? 'bg-dark/5'
-                        : 'hover:bg-surface'
+                    className={`p-2 sm:p-3 text-left transition-colors min-h-[80px] w-full relative ${
+                      isSelected ? 'bg-dark/5' : 'hover:bg-surface'
                     }`}
                   >
-                    <p className={`text-xs font-bold mb-2 ${isToday ? 'text-salmon-500' : 'text-dark'}`}>
-                      {day.getDate()}
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className={`text-xs font-bold ${isToday ? 'text-salmon-500' : 'text-dark'}`}>
+                        {day.getDate()}
+                      </p>
+                      {dayPending > 0 && (
+                        <span className="text-[9px] font-bold text-white px-1 rounded-full" style={{ backgroundColor: '#f59e0b' }}>
+                          {dayPending}
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-1.5">
                       <ShiftBar shift={morning} label="AM" />
                       <ShiftBar shift={afternoon} label="PM" />
@@ -184,27 +199,24 @@ export default function RoosterBeheer() {
         <div className="card overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: '#3c3c3b' }}>
             <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
-            <button
-              onClick={() => setSelectedDate(null)}
-              className="text-white/50 hover:text-white transition-colors text-lg leading-none"
-            >
-              ×
-            </button>
+            <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
           </div>
 
           {selectedDayShifts.length === 0 ? (
             <p className="px-5 py-6 text-sm text-gray-400 italic">Geen diensten op deze dag.</p>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-gray-100">
               {selectedDayShifts.map(shift => {
-                const available = availableStudentsForShift(shift)
+                const pending = (shift.assigned_students || []).filter(a => a.status === 'pending')
+                const approved = (shift.assigned_students || []).filter(a => a.status === 'approved')
                 const isFull = shift.open_spots <= 0
                 const isOchtend = shift.shift_type === 'ochtend'
+                const unassigned = unassignedStudents(shift)
 
                 return (
-                  <div key={shift.id} className="px-5 py-4">
-                    {/* Shift type + time */}
-                    <div className="flex items-center gap-2 mb-3">
+                  <div key={shift.id} className="px-5 py-5">
+                    {/* Shift header */}
+                    <div className="flex items-center gap-2 mb-4">
                       <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
                         isOchtend ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
                       }`}>
@@ -216,71 +228,83 @@ export default function RoosterBeheer() {
                       <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ${
                         isFull ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
                       }`}>
-                        {shift.assigned_count}/{shift.max_students}
+                        {shift.assigned_count}/{shift.max_students} goedgekeurd
                       </span>
                     </div>
 
-                    {/* Assigned */}
-                    {shift.assigned_students && shift.assigned_students.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {shift.assigned_students.map(s => (
-                          <div key={s.user_id} className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold"
-                            style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', color: '#0369a1' }}>
-                            <span>{s.full_name || s.email}</span>
-                            <span className="opacity-50 font-normal">({studentHours[s.user_id] || 0}u)</span>
-                            <button
-                              onClick={() => removeAssignment(shift.id, s.user_id)}
-                              className="opacity-40 hover:opacity-100 hover:text-red-500 transition-all font-bold ml-0.5"
-                            >×</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Available */}
-                    {!isFull && (
-                      <div>
-                        {available.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic">Geen beschikbare studenten</p>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {available.map(student => {
-                              const hours = studentHours[student.id] || 0
-                              const overMax = hours >= student.contract_max_hours * 4
-                              const hasConflict = studentDates[student.id]?.has(shift.shift_date) ?? false
-
-                              if (hasConflict) return (
-                                <span key={student.id}
-                                  className="text-xs px-2.5 py-1 rounded-xl border font-medium cursor-not-allowed"
-                                  style={{ borderColor: '#fca5a5', color: '#ef4444', backgroundColor: '#fff1f0' }}
-                                  title="Al ingeroosterd op deze dag">
-                                  🚫 {student.full_name || student.email.split('@')[0]}
-                                </span>
-                              )
-
-                              return (
+                    {/* Pending aanvragen */}
+                    {pending.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-bold text-amber-600 mb-2">
+                          ⏳ Aanvragen ({pending.length})
+                        </p>
+                        <div className="space-y-2">
+                          {pending.map(s => (
+                            <div key={s.user_id} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                              <span className="text-sm font-semibold text-dark">{s.full_name || s.email}</span>
+                              <div className="flex gap-2">
                                 <button
-                                  key={student.id}
-                                  onClick={() => assignStudent(shift.id, student.id)}
-                                  disabled={assigningShift === shift.id}
-                                  className="text-xs px-2.5 py-1 rounded-xl border font-semibold transition-colors disabled:opacity-50"
-                                  style={overMax
-                                    ? { borderColor: '#fdba74', color: '#c2410c', backgroundColor: '#fff7ed' }
-                                    : { borderColor: '#86efac', color: '#166534', backgroundColor: '#f0fdf4' }
-                                  }
-                                  title={`${hours}u deze maand${overMax ? ' ⚠️ boven contract max' : ''}`}
+                                  onClick={() => approveAssignment(s.assignment_id)}
+                                  disabled={processing === s.assignment_id}
+                                  className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                  style={{ backgroundColor: '#22c55e' }}
                                 >
-                                  + {student.full_name || student.email.split('@')[0]}
-                                  {overMax && ' ⚠️'}
+                                  {processing === s.assignment_id ? '...' : '✓ Goedkeuren'}
                                 </button>
-                              )
-                            })}
-                          </div>
-                        )}
+                                <button
+                                  onClick={() => rejectAssignment(s.assignment_id)}
+                                  disabled={processing === s.assignment_id}
+                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                >
+                                  Afwijzen
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
-                    {isFull && (
+                    {/* Goedgekeurde studenten */}
+                    {approved.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-bold text-green-700 mb-2">✓ Ingeroosterd ({approved.length})</p>
+                        <div className="flex flex-wrap gap-2">
+                          {approved.map(s => (
+                            <div key={s.user_id} className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-green-800">
+                              <span>{s.full_name || s.email}</span>
+                              <button
+                                onClick={() => removeAssignment(s.assignment_id)}
+                                disabled={processing === s.assignment_id}
+                                className="text-green-400 hover:text-red-500 transition-colors font-bold ml-0.5 disabled:opacity-50"
+                              >×</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Direct inroosteren (als er nog plek is) */}
+                    {!isFull && unassigned.length > 0 && (
+                      <div>
+                        <p className="text-xs font-bold text-gray-400 mb-2">Direct inroosteren</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {unassigned.map(student => (
+                            <button
+                              key={student.id}
+                              onClick={() => directAssign(shift.id, student.id)}
+                              disabled={processing === shift.id + student.id}
+                              className="text-xs px-2.5 py-1.5 rounded-xl border font-semibold transition-colors disabled:opacity-50"
+                              style={{ borderColor: '#d1d5db', color: '#6b7280', backgroundColor: '#f9fafb' }}
+                            >
+                              + {student.full_name || student.email.split('@')[0]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {isFull && pending.length === 0 && (
                       <p className="text-xs font-semibold text-green-600">✓ Dienst is vol</p>
                     )}
                   </div>
@@ -304,17 +328,18 @@ function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: strin
 
   const pct = shift.max_students > 0 ? shift.assigned_count / shift.max_students : 0
   const color = pct >= 1 ? '#22c55e' : pct > 0 ? '#f59e0b' : '#f87369'
+  const pendingCount = (shift.assigned_students || []).filter(a => a.status === 'pending').length
 
   return (
     <div className="flex items-center gap-1">
       <span className="text-[9px] text-gray-400 w-4">{label}</span>
       <div className="flex-1 bg-gray-100 rounded-full h-1 overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${Math.min(pct * 100, 100)}%`, backgroundColor: color }}
-        />
+        <div className="h-full rounded-full" style={{ width: `${Math.min(pct * 100, 100)}%`, backgroundColor: color }} />
       </div>
       <span className="text-[9px] text-gray-400">{shift.assigned_count}/{shift.max_students}</span>
+      {pendingCount > 0 && (
+        <span className="text-[9px] font-bold text-amber-600">+{pendingCount}</span>
+      )}
     </div>
   )
 }
@@ -322,7 +347,8 @@ function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: strin
 function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
     </div>
   )
 }

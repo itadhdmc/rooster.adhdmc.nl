@@ -1,5 +1,6 @@
 export type Role = 'student' | 'admin'
 export type ShiftType = 'ochtend' | 'middag'
+export type AssignmentStatus = 'pending' | 'approved'
 
 export interface Profile {
   id: string
@@ -44,6 +45,8 @@ export interface ShiftWithAssignments extends Shift {
     user_id: string
     full_name: string
     email: string
+    assignment_id: string
+    status: AssignmentStatus
   }> | null
 }
 
@@ -64,6 +67,7 @@ export interface Assignment {
   assigned_at: string
   google_calendar_event_id: string | null
   notified: boolean
+  status: AssignmentStatus
 }
 
 export interface StudentHours {
