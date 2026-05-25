@@ -48,7 +48,7 @@ export default function NieuwePeriode() {
       .insert({ year, month, availability_deadline: deadline || null, availability_open: true })
       .select().single()
 
-    if (pErr || !period) { setError('Kon periode niet aanmaken.'); setSaving(false); return }
+    if (pErr || !period) { setError('Kon periode niet aanmaken: ' + (pErr?.message || 'onbekende fout')); setSaving(false); return }
 
     const shifts = []
     for (const day of workdays) {
@@ -66,7 +66,7 @@ export default function NieuwePeriode() {
     }
 
     const { error: sErr } = await supabase.from('shifts').insert(shifts)
-    if (sErr) { setError('Periode aangemaakt maar diensten konden niet worden aangemaakt.'); setSaving(false); return }
+    if (sErr) { setError('Diensten konden niet worden aangemaakt: ' + sErr.message); setSaving(false); return }
 
     navigate(`/admin/rooster/${period.id}`)
   }

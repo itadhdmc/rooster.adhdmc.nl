@@ -33,3 +33,26 @@ export function daysInMonth(year: number, month: number): number {
 export function dateToISO(date: Date): string {
   return format(date, 'yyyy-MM-dd')
 }
+
+export function getWeeksInMonth(year: number, month: number): (Date | null)[][] {
+  const firstDay = new Date(year, month - 1, 1)
+  const lastDay = new Date(year, month, 0)
+
+  // Start from the Monday of the first week
+  const weekStart = new Date(firstDay)
+  const dow = weekStart.getDay()
+  weekStart.setDate(weekStart.getDate() - (dow === 0 ? 6 : dow - 1))
+
+  const result: (Date | null)[][] = []
+  while (weekStart <= lastDay) {
+    const week: (Date | null)[] = []
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(weekStart)
+      d.setDate(weekStart.getDate() + i)
+      week.push(d.getMonth() === month - 1 ? d : null)
+    }
+    result.push(week)
+    weekStart.setDate(weekStart.getDate() + 7)
+  }
+  return result
+}
