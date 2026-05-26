@@ -307,15 +307,20 @@ export default function RoosterBeheer() {
                     {approved.length > 0 && (
                       <div className="mb-4">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Ingeroosterd ({approved.length})</p>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="space-y-2">
                           {approved.map(s => (
-                            <div key={s.user_id} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                              <span>{s.full_name || s.email}</span>
+                            <div key={s.user_id} className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                <span className="text-sm font-semibold text-dark">{s.full_name || s.email}</span>
+                              </div>
                               <button
                                 onClick={() => removeAssignment(s.assignment_id)}
                                 disabled={processing === s.assignment_id}
-                                className="text-emerald-300 hover:text-rose-400 transition-colors font-bold ml-0.5 disabled:opacity-50"
-                              >×</button>
+                                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
+                              >
+                                {processing === s.assignment_id ? '...' : 'Verwijderen'}
+                              </button>
                             </div>
                           ))}
                         </div>
