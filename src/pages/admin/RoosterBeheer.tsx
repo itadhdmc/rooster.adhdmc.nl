@@ -177,11 +177,11 @@ export default function RoosterBeheer() {
 
       {/* Calendar grid */}
       <div className="card overflow-hidden">
-        <div className="grid grid-cols-6 border-b border-gray-100 bg-surface">
+        <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: '#3c3c3b' }}>
           {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'].map((d, i) => (
-            <div key={d} className={`py-2 text-center text-xs font-bold text-gray-400 ${i < 5 ? 'border-r border-gray-100' : ''}`}>
-              <span className="hidden sm:inline">{d}</span>
-              <span className="sm:hidden">{d.slice(0, 2)}</span>
+            <div key={d} className={`py-3 text-center ${i < 5 ? 'border-r border-white/10' : ''}`}>
+              <span className="hidden sm:inline text-xs font-semibold text-white/50 uppercase tracking-widest">{d}</span>
+              <span className="sm:hidden text-xs font-semibold text-white/50 uppercase tracking-widest">{d.slice(0, 2)}</span>
             </div>
           ))}
         </div>
@@ -189,35 +189,41 @@ export default function RoosterBeheer() {
           {weeks.map((week, wi) => (
             <div key={wi} className="grid grid-cols-6 divide-x divide-gray-100">
               {week.map((day, di) => {
-                if (!day) return <div key={di} className="p-2 sm:p-3 bg-gray-50/50 min-h-[80px]" />
+                if (!day) return <div key={di} className="bg-gray-50/40 min-h-[100px]" />
                 const iso = dateToISO(day)
                 const dayShifts = shiftsByDate[iso] || {}
                 const morning = dayShifts['ochtend']
                 const afternoon = dayShifts['middag']
                 const isSelected = selectedDate === iso
                 const isToday = iso === new Date().toISOString().split('T')[0]
-                // Show badge if any pending requests this day
                 const dayPending = [morning, afternoon].filter(Boolean).reduce((n, s) =>
                   n + (s!.assigned_students || []).filter(a => a.status === 'pending').length, 0)
+                const hasShifts = morning || afternoon
 
                 return (
                   <button
                     key={iso}
                     onClick={() => setSelectedDate(isSelected ? null : iso)}
-                    className={`p-2 sm:p-3 text-left transition-colors min-h-[80px] w-full relative ${
-                      isSelected ? 'bg-dark/5' : 'hover:bg-surface'
+                    className={`p-2.5 sm:p-3 text-left transition-colors min-h-[100px] w-full ${
+                      isSelected ? 'bg-dark/[0.06] ring-2 ring-inset ring-dark/20' : hasShifts ? 'hover:bg-gray-50' : 'cursor-default'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <p className={`text-xs font-bold ${isToday ? 'text-salmon-500' : 'text-dark'}`}>
+                    {/* Date number */}
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold ${
+                        isToday
+                          ? 'text-white'
+                          : 'text-dark'
+                      }`} style={isToday ? { backgroundColor: '#f87369' } : {}}>
                         {day.getDate()}
-                      </p>
+                      </div>
                       {dayPending > 0 && (
-                        <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full leading-none">
                           {dayPending}
                         </span>
                       )}
                     </div>
+                    {/* Shift blocks */}
                     <div className="space-y-1.5">
                       <ShiftBar shift={morning} label="AM" />
                       <ShiftBar shift={afternoon} label="PM" />
@@ -454,26 +460,30 @@ function QuickApprovePanel({
 
 function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: string }) {
   if (!shift) return (
-    <div className="flex items-center gap-1">
-      <span className="text-[9px] text-gray-300 w-4">{label}</span>
-      <div className="h-1 rounded-full flex-1 bg-gray-100" />
+    <div className="h-6 rounded-md bg-gray-100/60 flex items-center px-2">
+      <span className="text-[9px] text-gray-300 font-semibold">{label}</span>
     </div>
   )
 
   const pct = shift.max_students > 0 ? shift.assigned_count / shift.max_students : 0
-  const color = pct >= 1 ? '#6ee7b7' : pct > 0 ? '#fde68a' : '#fda4af'
   const pendingCount = (shift.assigned_students || []).filter(a => a.status === 'pending').length
 
+  const bg = pct >= 1 ? '#d1fae5' : pct > 0 ? '#fef9c3' : '#fee2e2'
+  const textColor = pct >= 1 ? '#065f46' : pct > 0 ? '#92400e' : '#9f1239'
+
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[9px] text-gray-400 w-4">{label}</span>
-      <div className="flex-1 bg-gray-100 rounded-full h-1 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${Math.min(pct * 100, 100)}%`, backgroundColor: color }} />
+    <div className="h-6 rounded-md flex items-center justify-between px-2 gap-1" style={{ backgroundColor: bg }}>
+      <span className="text-[9px] font-bold" style={{ color: textColor }}>{label}</span>
+      <div className="flex items-center gap-1 ml-auto">
+        <span className="text-[10px] font-bold" style={{ color: textColor }}>
+          {shift.assigned_count}/{shift.max_students}
+        </span>
+        {pendingCount > 0 && (
+          <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1 rounded-sm leading-tight">
+            +{pendingCount}
+          </span>
+        )}
       </div>
-      <span className="text-[9px] text-gray-400">{shift.assigned_count}/{shift.max_students}</span>
-      {pendingCount > 0 && (
-        <span className="text-[9px] font-bold text-amber-600">+{pendingCount}</span>
-      )}
     </div>
   )
 }
