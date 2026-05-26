@@ -237,8 +237,8 @@ export default function Beschikbaarheid() {
 
               if (!shift) {
                 return (
-                  <div key={iso} className="flex items-center justify-center py-6 border-l border-gray-100">
-                    <span className="text-gray-200 text-sm">—</span>
+                  <div key={iso} className="flex items-center justify-center border-l border-gray-100 min-h-[110px]">
+                    <span className="text-gray-200 text-xs">—</span>
                   </div>
                 )
               }
@@ -248,26 +248,38 @@ export default function Beschikbaarheid() {
               const isFull = shift.open_spots <= 0 && !myAssignment
 
               return (
-                <div key={iso} className="flex flex-col items-center justify-center gap-2 py-4 px-1 border-l border-gray-100">
+                <div key={iso} className="flex flex-col items-center justify-between gap-1.5 py-3 px-1.5 border-l border-gray-100 min-h-[110px]">
+                  {/* Tijd + plekken */}
+                  <div className="text-center">
+                    <p className="text-[10px] text-gray-400 font-semibold leading-none">
+                      {shift.start_time.slice(0, 5)}
+                    </p>
+                    {!isApproved && !isPending && !isFull && !isPast && (
+                      <p className="text-[9px] text-gray-300 mt-0.5 leading-none">
+                        {shift.open_spots} plek{shift.open_spots !== 1 ? 'ken' : ''}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Status dot */}
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                     isApproved ? 'bg-indigo-300' :
-                    isPending ? 'bg-amber-300' :
+                    isPending  ? 'bg-amber-300' :
                     isFull || isPast ? 'bg-gray-200' :
-                    'bg-emerald-300'
+                    'bg-emerald-400'
                   }`} />
 
-                  <p className="text-[10px] text-gray-400 font-medium leading-none">
-                    {shift.start_time.slice(0, 5)}
-                  </p>
-
+                  {/* Actie */}
                   {isApproved && (
-                    <span className="text-[11px] font-bold text-indigo-400 leading-none">✓</span>
+                    <span className="text-[10px] font-bold text-indigo-400 bg-indigo-50 px-2 py-1 rounded-lg w-full text-center leading-none">
+                      Ingepland
+                    </span>
                   )}
                   {isPending && myAssignment && (
                     <button
                       onClick={() => withdraw(myAssignment.id)}
                       disabled={processing === myAssignment.id}
-                      className="text-[10px] font-semibold text-amber-500 hover:text-amber-700 transition-colors disabled:opacity-50 leading-none"
+                      className="text-[10px] font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50 px-2 py-1 rounded-lg w-full text-center leading-none"
                     >
                       {processing === myAssignment.id ? '...' : 'Afmelden'}
                     </button>
@@ -276,14 +288,14 @@ export default function Beschikbaarheid() {
                     <button
                       onClick={() => signUp(shift.id)}
                       disabled={processing === shift.id}
-                      className="w-7 h-5 rounded-md flex items-center justify-center text-white text-xs font-bold disabled:opacity-50 transition-opacity"
+                      className="text-[10px] font-bold text-white py-1.5 rounded-lg w-full text-center disabled:opacity-50 transition-opacity"
                       style={{ backgroundColor: '#f87369' }}
                     >
-                      {processing === shift.id ? '·' : '+'}
+                      {processing === shift.id ? '...' : 'Aanmelden'}
                     </button>
                   )}
                   {(isFull || (isPast && !myAssignment)) && (
-                    <span className="text-[10px] text-gray-300 font-medium leading-none">
+                    <span className="text-[10px] text-gray-300 font-medium w-full text-center leading-none">
                       {isFull ? 'vol' : '—'}
                     </span>
                   )}
