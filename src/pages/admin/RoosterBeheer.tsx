@@ -54,6 +54,15 @@ export default function RoosterBeheer() {
     setProcessing(null)
   }
 
+  async function approveAll(assignmentIds: string[]) {
+    setProcessing('bulk')
+    for (const id of assignmentIds) {
+      await supabase.from('assignments').update({ status: 'approved' }).eq('id', id)
+    }
+    await loadAll()
+    setProcessing(null)
+  }
+
   async function directAssign(shiftId: string, userId: string) {
     setProcessing(shiftId + userId)
     const { error } = await supabase.from('assignments').insert({
@@ -154,6 +163,7 @@ export default function RoosterBeheer() {
           processing={processing}
           onApprove={approveAssignment}
           onReject={rejectAssignment}
+          onApproveAll={approveAll}
         />
       )}
 
@@ -347,12 +357,13 @@ export default function RoosterBeheer() {
 }
 
 function QuickApprovePanel({
-  shifts, processing, onApprove, onReject
+  shifts, processing, onApprove, onReject, onApproveAll
 }: {
   shifts: ShiftWithAssignments[]
   processing: string | null
   onApprove: (id: string) => void
   onReject: (id: string) => void
+  onApproveAll: (ids: string[]) => void
 }) {
   const rows: { shift: ShiftWithAssignments; student: NonNullable<ShiftWithAssignments['assigned_students']>[number] }[] = []
   for (const s of [...shifts].sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.shift_type.localeCompare(b.shift_type))) {
@@ -368,10 +379,17 @@ function QuickApprovePanel({
 
   return (
     <div className="card overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100 bg-amber-50/60">
+      <div className="px-5 py-3 border-b border-gray-100 bg-amber-50/60 flex items-center justify-between gap-3">
         <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">
           Snel goedkeuren — {rows.length} openstaand{rows.length === 1 ? '' : 'e'}
         </p>
+        <button
+          onClick={() => onApproveAll(rows.map(r => r.student.assignment_id))}
+          disabled={processing !== null}
+          className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50 flex-shrink-0"
+        >
+          Alles goedkeuren
+        </button>
       </div>
       <div className="divide-y divide-gray-100">
         {rows.map(({ shift, student }) => {
