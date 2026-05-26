@@ -44,6 +44,7 @@ export default function MijnRooster() {
 
   useEffect(() => {
     if (!profile) return
+    setAutoSynced(false)
     loadAssignments()
   }, [profile, selectedMonth])
 
@@ -76,7 +77,6 @@ export default function MijnRooster() {
 
   async function loadAssignments() {
     setLoading(true)
-    setAutoSynced(false)
     const [year, month] = selectedMonth.split('-').map(Number)
     const start = `${year}-${String(month).padStart(2, '0')}-01`
     const end   = `${year}-${String(month).padStart(2, '0')}-31`
