@@ -1,10 +1,9 @@
 -- ============================================================
--- ⚠️ VEROUDERD — gebruik supabase/migrations/ als bron van waarheid.
--- Dit bestand mist latere wijzigingen (assignments.status,
--- notifications, shift_swaps, RPC's). Zie supabase/README.md.
+-- 0001 — Initiële schema (baseline)
+-- ADHDMC Zorgadministratie Rooster
 -- ============================================================
--- ADHDMC Zorgadministratie Rooster - Database Schema
--- Uitvoeren in Supabase SQL Editor
+-- Dit is de oorspronkelijke schema-opzet. Latere wijzigingen
+-- staan in opvolgende migraties (0002, 0003, ...).
 -- ============================================================
 
 -- Profielen (gekoppeld aan auth.users)

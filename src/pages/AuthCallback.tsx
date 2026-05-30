@@ -34,6 +34,19 @@ export default function AuthCallback() {
         }, { onConflict: 'id' })
         if (upsertError) console.error('Profiel upsert fout:', upsertError.message)
 
+        // Bewaar de Google refresh-token zodat de server de agenda kan
+        // synchroniseren zonder dat de gebruiker ingelogd hoeft te zijn.
+        // Deze is alleen aanwezig direct na een consent-login (offline access).
+        const refreshToken = data.session.provider_refresh_token
+        if (refreshToken) {
+          const { error: tokenError } = await supabase.from('google_tokens').upsert({
+            user_id: user.id,
+            refresh_token: refreshToken,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' })
+          if (tokenError) console.error('Google token opslaan mislukt:', tokenError.message)
+        }
+
         // Koppel eventuele pre-registratie aan dit account
         await supabase.rpc('claim_pending_student')
 
