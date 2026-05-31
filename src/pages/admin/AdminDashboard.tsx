@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { RosterPeriod, Profile, SwapDetail } from '../../types'
 import { monthLabel } from '../../utils/dates'
+import { exportPeriodHours } from '../../utils/export'
 
 export default function AdminDashboard() {
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
@@ -164,12 +165,20 @@ export default function AdminDashboard() {
 
 function PeriodCard({ period, onUpdate }: { period: RosterPeriod; onUpdate: () => void }) {
   const [updating, setUpdating] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   async function toggle(field: 'availability_open' | 'second_round_open' | 'roster_published') {
     setUpdating(true)
     await supabase.from('roster_periods').update({ [field]: !period[field] }).eq('id', period.id)
     onUpdate()
     setUpdating(false)
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    const res = await exportPeriodHours(period)
+    setExporting(false)
+    if (!res.ok) alert(res.message || 'Export mislukt.')
   }
 
   const statusLabel = period.roster_published ? 'Gepubliceerd'
@@ -212,6 +221,17 @@ function PeriodCard({ period, onUpdate }: { period: RosterPeriod; onUpdate: () =
           <ToggleBtn label="Inschrijving" active={period.availability_open} onClick={() => toggle('availability_open')} disabled={updating} />
           <ToggleBtn label="2e ronde" active={period.second_round_open} onClick={() => toggle('second_round_open')} disabled={updating} />
           <ToggleBtn label="Publiceer" active={period.roster_published} onClick={() => toggle('roster_published')} disabled={updating} accent="#22c55e" />
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            title="Download gewerkte uren per medewerker (CSV) voor de financiële administratie"
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-semibold border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            {exporting ? 'Bezig...' : 'Uren export'}
+          </button>
           <Link to={`/admin/rooster/${period.id}`}
             className="text-xs px-3.5 py-1.5 rounded-xl font-semibold bg-dark text-white hover:opacity-80 transition-opacity">
             Beheren →
