@@ -2,7 +2,12 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
-import { formatDate, monthLabel, dateToISO, getWeeksInMonth } from '../../utils/dates'
+import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday } from '../../utils/dates'
+
+const DEFAULT_TEMPLATES: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {
+  ochtend: { start_time: '08:30', end_time: '12:30', duration_hours: 4 },
+  middag: { start_time: '12:00', end_time: '17:30', duration_hours: 5.5 },
+}
 
 export default function RoosterBeheer() {
   const { periodId } = useParams<{ periodId: string }>()
@@ -80,6 +85,41 @@ export default function RoosterBeheer() {
     setProcessing(null)
   }
 
+  // Voeg ontbrekende zaterdagen toe aan deze (bestaande) periode, max 1 student.
+  async function addSaturdays(dates: string[]) {
+    if (!period || dates.length === 0) return
+    setProcessing('saturdays')
+
+    // Gebruik de tijden/types die al in deze periode voorkomen; anders standaard.
+    const templates: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {}
+    for (const s of shifts) {
+      if (!templates[s.shift_type]) {
+        templates[s.shift_type] = { start_time: s.start_time, end_time: s.end_time, duration_hours: Number(s.duration_hours) }
+      }
+    }
+    const types = Object.keys(templates).length ? templates : DEFAULT_TEMPLATES
+
+    const newShifts = []
+    for (const iso of dates) {
+      for (const [shift_type, tpl] of Object.entries(types)) {
+        newShifts.push({
+          period_id: period.id,
+          shift_date: iso,
+          shift_type,
+          start_time: tpl.start_time,
+          end_time: tpl.end_time,
+          duration_hours: tpl.duration_hours,
+          max_students: 1,
+        })
+      }
+    }
+
+    const { error } = await supabase.from('shifts').insert(newShifts)
+    if (error) alert('Zaterdagen toevoegen mislukt: ' + error.message)
+    await loadAll()
+    setProcessing(null)
+  }
+
   const shiftsByDate = useMemo(() =>
     shifts.reduce<Record<string, Record<string, ShiftWithAssignments>>>((acc, s) => {
       if (!acc[s.shift_date]) acc[s.shift_date] = {}
@@ -110,6 +150,15 @@ export default function RoosterBeheer() {
   const filledShifts = shifts.filter(s => s.open_spots <= 0).length
   const openShifts = totalShifts - filledShifts
   const weeks = getWeeksInMonth(period.year, period.month)
+
+  // Zaterdagen in deze maand die nog geen enkele dienst hebben.
+  const saturdayDatesWithShifts = new Set(
+    shifts.filter(s => new Date(s.shift_date + 'T00:00:00').getDay() === 6).map(s => s.shift_date)
+  )
+  const missingSaturdays = getRosterDaysInMonth(period.year, period.month)
+    .filter(isSaturday)
+    .map(dateToISO)
+    .filter(iso => !saturdayDatesWithShifts.has(iso))
 
   return (
     <div className="space-y-5">
@@ -170,6 +219,26 @@ export default function RoosterBeheer() {
           onReject={rejectAssignment}
           onApproveAll={approveAll}
         />
+      )}
+
+      {/* Zaterdagen toevoegen aan bestaande periode */}
+      {missingSaturdays.length > 0 && (
+        <div className="card p-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-dark">
+              {missingSaturdays.length} zaterdag{missingSaturdays.length !== 1 ? 'en' : ''} zonder dienst
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">Voeg ze toe met max 1 student per dienst.</p>
+          </div>
+          <button
+            onClick={() => addSaturdays(missingSaturdays)}
+            disabled={processing === 'saturdays'}
+            className="text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
+            style={{ backgroundColor: '#f87369' }}
+          >
+            {processing === 'saturdays' ? 'Toevoegen...' : 'Zaterdagen toevoegen'}
+          </button>
+        </div>
       )}
 
       {/* Legend */}
