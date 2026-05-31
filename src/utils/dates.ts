@@ -22,6 +22,17 @@ export function getWorkdaysInMonth(year: number, month: number): Date[] {
   return eachDayOfInterval({ start, end }).filter(d => !isWeekend(d))
 }
 
+// Maandag t/m zaterdag (alleen zondag uitgesloten).
+export function getRosterDaysInMonth(year: number, month: number): Date[] {
+  const start = startOfMonth(new Date(year, month - 1))
+  const end = endOfMonth(new Date(year, month - 1))
+  return eachDayOfInterval({ start, end }).filter(d => d.getDay() !== 0)
+}
+
+export function isSaturday(date: Date): boolean {
+  return date.getDay() === 6
+}
+
 export function monthLabel(year: number, month: number): string {
   return `${MONTHS_NL[month - 1]} ${year}`
 }

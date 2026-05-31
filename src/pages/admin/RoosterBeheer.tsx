@@ -56,11 +56,16 @@ export default function RoosterBeheer() {
 
   async function approveAll(assignmentIds: string[]) {
     setProcessing('bulk')
+    let blocked = 0
     for (const id of assignmentIds) {
-      await supabase.from('assignments').update({ status: 'approved' }).eq('id', id)
+      const { error } = await supabase.from('assignments').update({ status: 'approved' }).eq('id', id)
+      if (error) blocked++
     }
     await loadAll()
     setProcessing(null)
+    if (blocked > 0) {
+      alert(`${blocked} aanvraag/aanvragen niet goedgekeurd: de student zou daarmee boven de maandlimiet (max uren) uitkomen.`)
+    }
   }
 
   async function directAssign(shiftId: string, userId: string) {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { getWorkdaysInMonth, dateToISO, monthLabel } from '../../utils/dates'
+import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, dateToISO, monthLabel } from '../../utils/dates'
 
 const SHIFT_TEMPLATES = [
   { shift_type: 'ochtend' as const, start_time: '08:30', end_time: '12:30', duration_hours: 4 },
@@ -19,15 +19,18 @@ export default function NieuwePeriode() {
   const [includeOchtend, setIncludeOchtend] = useState(true)
   const [includeMiddag, setIncludeMiddag] = useState(true)
   const [maxStudents, setMaxStudents] = useState(2)
+  const [includeSaturday, setIncludeSaturday] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const days = includeSaturday ? getRosterDaysInMonth(year, month) : getWorkdaysInMonth(year, month)
   const workdays = getWorkdaysInMonth(year, month)
+  const saturdays = days.filter(isSaturday)
   const selectedTypes = SHIFT_TEMPLATES.filter(t =>
     (t.shift_type === 'ochtend' && includeOchtend) ||
     (t.shift_type === 'middag' && includeMiddag)
   )
-  const totalShifts = workdays.length * selectedTypes.length
+  const totalShifts = days.length * selectedTypes.length
 
   async function handleCreate() {
     if (!includeOchtend && !includeMiddag) { setError('Selecteer minimaal één diensttype.'); return }
@@ -51,7 +54,7 @@ export default function NieuwePeriode() {
     if (pErr || !period) { setError('Kon periode niet aanmaken: ' + (pErr?.message || 'onbekende fout')); setSaving(false); return }
 
     const shifts = []
-    for (const day of workdays) {
+    for (const day of days) {
       for (const template of selectedTypes) {
         shifts.push({
           period_id: period.id,
@@ -60,7 +63,8 @@ export default function NieuwePeriode() {
           start_time: template.start_time,
           end_time: template.end_time,
           duration_hours: template.duration_hours,
-          max_students: maxStudents,
+          // Zaterdag: altijd maar 1 student.
+          max_students: isSaturday(day) ? 1 : maxStudents,
         })
       }
     }
@@ -103,7 +107,9 @@ export default function NieuwePeriode() {
               ))}
             </select>
           </div>
-          <p className="text-xs text-gray-400 mt-1.5">{workdays.length} werkdagen in {monthLabel(year, month)}</p>
+          <p className="text-xs text-gray-400 mt-1.5">
+            {workdays.length} werkdagen{includeSaturday && saturdays.length > 0 ? ` + ${saturdays.length} zaterdagen` : ''} in {monthLabel(year, month)}
+          </p>
         </div>
 
         {/* Deadline */}
@@ -168,10 +174,29 @@ export default function NieuwePeriode() {
           </div>
         </div>
 
+        {/* Zaterdag */}
+        <div>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Zaterdag</label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div
+              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
+              style={{ borderColor: includeSaturday ? '#f87369' : '#d1d5db', backgroundColor: includeSaturday ? '#f87369' : 'white' }}
+              onClick={() => setIncludeSaturday(!includeSaturday)}
+            >
+              {includeSaturday && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-dark">Zaterdagen meenemen</p>
+              <p className="text-xs text-gray-400">Altijd maar 1 student per zaterdagdienst</p>
+            </div>
+          </label>
+        </div>
+
         {/* Summary */}
         <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: '#fff1f0', color: '#f87369' }}>
           {totalShifts} diensten worden aangemaakt voor {monthLabel(year, month)}
-          {includeOchtend && includeMiddag && ' (ochtend + middag per werkdag)'}
+          {includeOchtend && includeMiddag && ' (ochtend + middag per dag)'}
+          {includeSaturday && saturdays.length > 0 && ', zaterdagen met max 1 student'}
         </div>
 
         {error && (

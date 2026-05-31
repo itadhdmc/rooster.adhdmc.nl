@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { RosterPeriod, Availability, Profile } from '../../types'
-import { getWorkdaysInMonth, dateToISO, monthLabel, formatDate } from '../../utils/dates'
+import { getRosterDaysInMonth, dateToISO, monthLabel, formatDate } from '../../utils/dates'
 
 export default function BeschikbaarheidOverzicht() {
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
@@ -30,7 +30,7 @@ export default function BeschikbaarheidOverzicht() {
 
   if (loading) return <Spinner />
 
-  const workdays = selectedPeriod ? getWorkdaysInMonth(selectedPeriod.year, selectedPeriod.month) : []
+  const workdays = selectedPeriod ? getRosterDaysInMonth(selectedPeriod.year, selectedPeriod.month) : []
 
   function studentsForDate(date: string, type: 'ochtend' | 'middag') {
     return availability
