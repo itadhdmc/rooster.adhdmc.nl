@@ -76,33 +76,86 @@ Inbox** (en voor admins ook **Beheer**).
 
 ## A3. Inschrijven voor diensten
 
-Dit doe je via **Inschrijven** in de menubalk.
+Dit is het belangrijkste dat je elke maand doet: je geeft aan op welke
+diensten je wilt werken. Hieronder staat het **helemaal uitgeschreven**, stap
+voor stap.
 
-1. Klik op **Inschrijven**.
-2. Staat er meer dan één maand open? Kies dan rechtsboven de juiste **maand**.
-   De kalender springt dan automatisch naar die maand (de maandnaam staat in
-   het oranje label boven de week).
-3. Je ziet een **weekrooster** van maandag t/m **zaterdag**, met per dag een
-   **Ochtend**- en een **Middag**-rij.
-4. Blader met **← Vorige** en **Volgende →** door de weken. Met **Terug naar
-   \<maand\>** spring je terug naar het begin van de gekozen maand.
-5. Klik bij een dienst op de oranje knop **Aanmelden** om je op te geven.
-6. Bedacht je je? Klik op **Afmelden** zolang je aanvraag nog niet is
-   goedgekeurd.
+### Wat je vooraf moet weten
 
-**Wat betekenen de kleuren / statussen?**
+- **Je moet je op tijd inschrijven.** De beheerder zet per maand een
+  **deadline**. Schrijf je je niet vóór die deadline in, dan kun je voor die
+  maand niet meer worden ingepland.
+- **Aanmelden is een verzoek, geen zekerheid.** Nadat je je hebt aangemeld,
+  moet de beheerder je nog **goedkeuren**. Pas dan ben je écht ingeroosterd.
+- **Meld je voor genoeg diensten aan.** Je hebt een contract met een minimum-
+  en maximumaantal uren. Zorg dat je je voor genoeg diensten aanmeldt om aan je
+  uren te komen, maar je kunt niet méér worden ingeroosterd dan je maandmaximum.
+- Inschrijven kan alleen als de beheerder de **inschrijving heeft opengezet**
+  voor die maand. Staat er geen maand open, dan zie je de melding *"Geen open
+  inschrijving"*.
 
-| Kleur / label | Betekenis |
-|---------------|-----------|
-| 🟢 groen "Aanmelden" | Plek vrij — je kunt je aanmelden |
-| 🟠 amber "Afmelden" | Je hebt je aangemeld, wacht op goedkeuring |
-| 🔵 indigo "Ingepland" | Goedgekeurd — je bent ingeroosterd |
-| grijs "vol" | Alle plekken bezet |
-| — | Geen dienst die dag |
+### Stap voor stap
 
-> 💡 **Let op:** aanmelden is *nog geen* zekerheid. De beheerder moet je
-> aanmelding eerst **goedkeuren**. Zaterdagdiensten hebben altijd maar **1
-> plek**.
+**Stap 1 — Open het inschrijfscherm.**
+Klik bovenin de menubalk op **Inschrijven**.
+
+**Stap 2 — Kies de juiste maand.**
+Staat er meer dan één maand open, kies dan rechtsboven in het **maandkeuze-
+menu** de juiste maand (bijv. *juni 2026*). De kalender springt dan **vanzelf**
+naar die maand. Ter controle: boven de week staat een oranje label met de
+maandnaam, en in de kop staat *"Diensten in \<maand\>"*.
+
+**Stap 3 — Bekijk de week.**
+Je ziet een **weekrooster** van **maandag t/m zaterdag**. Elke dag heeft twee
+rijen:
+- **Ochtend** — 08:30–12:30 (4 uur)
+- **Middag** — 12:00–17:30 (5,5 uur)
+
+Onder elke dienst staat hoeveel **plekken** er nog vrij zijn.
+
+**Stap 4 — Blader naar de juiste week.**
+Gebruik **← Vorige** en **Volgende →** om door de weken van de maand te
+bladeren. Ben je verdwaald? Klik op **Terug naar \<maand\>** om terug te
+springen naar het begin van de gekozen maand.
+
+**Stap 5 — Meld je aan voor een dienst.**
+Klik bij de gewenste dienst op de oranje knop **Aanmelden**. De knop verandert
+en de dienst krijgt de status **aangemeld** (amber). Herhaal dit voor elke
+dienst waarop je wilt werken.
+
+**Stap 6 — Controleer je aanmeldingen.**
+Bovenin zie je tellers: **Wacht op goedkeuring** (je aanmeldingen) en
+**Goedgekeurd** (al ingeroosterd). Zo zie je in één oogopslag hoeveel je hebt
+ingediend.
+
+**Stap 7 — Afmelden (als je je bedenkt).**
+Zolang een aanmelding **nog niet is goedgekeurd**, kun je je weer **Afmelden**:
+klik op de amber knop **Afmelden** bij die dienst. Is de dienst al goedgekeurd
+(blauw, "Ingepland")? Dan kun je je niet meer zelf afmelden — gebruik dan een
+**ruilverzoek** (zie A6) of neem contact op met de beheerder.
+
+**Stap 8 — Wacht op goedkeuring.**
+Klaar! De beheerder bekijkt je aanmeldingen en keurt ze goed of af. Je krijgt
+hiervan een melding in je **Inbox** (A7). Goedgekeurde diensten verschijnen in
+**Mijn rooster** (A4).
+
+### Wat betekenen de kleuren / statussen?
+
+| Kleur / label | Betekenis | Wat kun je doen? |
+|---------------|-----------|------------------|
+| 🟢 groen **"Aanmelden"** | Plek vrij | Klik om je aan te melden |
+| 🟠 amber **"Afmelden"** | Je bent aangemeld, wacht op goedkeuring | Klik om je weer af te melden |
+| 🔵 blauw **"Ingepland"** | Goedgekeurd — je bent ingeroosterd | Niets nodig (ruilen kan via A6) |
+| grijs **"vol"** | Alle plekken bezet | Kies een andere dienst |
+| **—** | Geen dienst die dag | — |
+
+### Belangrijk om te onthouden
+
+- ⏰ **Schrijf je in vóór de deadline** — daarna lukt het niet meer.
+- ✅ **Aangemeld ≠ ingeroosterd.** Pas na goedkeuring sta je vast ingepland.
+- 1️⃣ **Zaterdagdiensten** hebben altijd maar **1 plek** — wie het eerst komt.
+- 🔁 Verdwenen plek? Iemand anders was je net voor. Kies een andere dienst.
+- 📅 Diensten in het **verleden** kun je niet meer kiezen (die staan op "—").
 
 ---
 
