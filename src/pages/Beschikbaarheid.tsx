@@ -18,6 +18,24 @@ function getWeekDays(weekOffset: number): Date[] {
   })
 }
 
+// Hoeveel weken (t.o.v. deze week) moet je vooruit/terug om bij de eerste
+// week van een gekozen maand uit te komen.
+function getWeekOffsetForMonth(year: number, month: number): number {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const cd = today.getDay()
+  const currentMonday = new Date(today)
+  currentMonday.setDate(today.getDate() + (cd === 0 ? -6 : 1 - cd))
+
+  const first = new Date(year, month - 1, 1)
+  const fd = first.getDay()
+  const targetMonday = new Date(first)
+  targetMonday.setDate(first.getDate() - (fd === 0 ? 6 : fd - 1))
+
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  return Math.round((targetMonday.getTime() - currentMonday.getTime()) / WEEK_MS)
+}
+
 export default function Beschikbaarheid() {
   const { profile } = useAuth()
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
@@ -30,7 +48,13 @@ export default function Beschikbaarheid() {
 
   useEffect(() => { loadPeriods() }, [])
   useEffect(() => { if (selectedPeriod && profile) loadShifts() }, [selectedPeriod, profile])
-  useEffect(() => { setWeekOffset(0) }, [selectedPeriod?.id])
+  // Spring automatisch naar de gekozen maand (huidige maand => deze week).
+  useEffect(() => {
+    if (!selectedPeriod) return
+    const now = new Date()
+    const isCurrentMonth = selectedPeriod.year === now.getFullYear() && selectedPeriod.month === now.getMonth() + 1
+    setWeekOffset(isCurrentMonth ? 0 : getWeekOffsetForMonth(selectedPeriod.year, selectedPeriod.month))
+  }, [selectedPeriod?.id])
 
   async function loadPeriods() {
     const { data } = await supabase
@@ -83,6 +107,12 @@ export default function Beschikbaarheid() {
   const weekStart = weekDays[0]
   const weekEnd = weekDays[4]
 
+  // De "startweek" van de gekozen maand (deze week als het de huidige maand is).
+  const monthHomeOffset = selectedPeriod
+    ? (today.getFullYear() === selectedPeriod.year && today.getMonth() + 1 === selectedPeriod.month
+        ? 0 : getWeekOffsetForMonth(selectedPeriod.year, selectedPeriod.month))
+    : 0
+
   const weekShifts = shifts.filter(s => {
     const d = new Date(s.shift_date + 'T00:00:00')
     return d >= weekStart && d <= weekEnd
@@ -123,7 +153,11 @@ export default function Beschikbaarheid() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-dark">Inschrijven</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Klik op + om je aan te melden voor een dienst.</p>
+          <p className="text-gray-400 text-sm mt-0.5">
+            {selectedPeriod
+              ? <>Diensten in <span className="font-semibold text-dark capitalize">{monthLabel(selectedPeriod.year, selectedPeriod.month)}</span> · klik op + om je aan te melden.</>
+              : 'Klik op + om je aan te melden voor een dienst.'}
+          </p>
         </div>
         {periods.length > 1 && (
           <select
@@ -183,10 +217,15 @@ export default function Beschikbaarheid() {
           ← Vorige
         </button>
         <div className="text-center">
+          {selectedPeriod && (
+            <p className="text-[10px] font-bold uppercase tracking-widest text-salmon-500 capitalize">
+              {monthLabel(selectedPeriod.year, selectedPeriod.month)}
+            </p>
+          )}
           <p className="font-semibold text-dark text-sm">{weekLabel}</p>
-          {weekOffset !== 0 && (
-            <button onClick={() => setWeekOffset(0)} className="text-xs text-gray-400 hover:text-dark transition-colors mt-0.5">
-              Terug naar deze week
+          {weekOffset !== monthHomeOffset && (
+            <button onClick={() => setWeekOffset(monthHomeOffset)} className="text-xs text-gray-400 hover:text-dark transition-colors mt-0.5">
+              Terug naar {selectedPeriod ? monthLabel(selectedPeriod.year, selectedPeriod.month).split(' ')[0] : 'begin'}
             </button>
           )}
         </div>
