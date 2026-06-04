@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getGoogleToken } from '../lib/auth'
-import { createCalendarEvent, deleteCalendarEvent } from '../lib/calendar'
+import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
 import { Shift, Assignment, SwappableAssignment } from '../types'
 import { formatDate, monthLabel } from '../utils/dates'
 
@@ -19,6 +19,7 @@ export default function MijnRooster() {
   const [autoSyncing, setAutoSyncing] = useState(false)
   const [autoSyncSuccess, setAutoSyncSuccess] = useState(false)
   const [autoSynced, setAutoSynced] = useState(false)
+  const [repairing, setRepairing] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -61,9 +62,9 @@ export default function MijnRooster() {
     setAutoSyncing(true)
     let synced = 0
     for (const a of unsynced) {
-      const eventId = await createCalendarEvent(a.shift, token)
+      const eventId = await createCalendarEvent(a.shift, token, a.id)
       if (eventId) {
-        await supabase.from('assignments').update({ google_calendar_event_id: eventId }).eq('id', a.id)
+        await persistEventId(a.id, eventId)
         synced++
       }
     }
@@ -102,18 +103,25 @@ export default function MijnRooster() {
     setLoading(false)
   }
 
+  // Slaat het agenda-id op via een RPC (studenten mogen de tabel niet direct
+  // wijzigen). Best-effort: faalt het, dan voorkomt het vaste agenda-id alsnog
+  // duplicaten.
+  async function persistEventId(assignmentId: string, eventId: string | null) {
+    await supabase.rpc('set_calendar_event_id', { p_assignment_id: assignmentId, p_event_id: eventId })
+  }
+
   async function syncShift(assignment: AssignmentWithShift) {
     if (!googleToken) { setTokenWarning(true); return }
     setSyncing(prev => ({ ...prev, [assignment.shift_id]: true }))
 
     if (assignment.google_calendar_event_id) {
       await deleteCalendarEvent(assignment.google_calendar_event_id, googleToken)
-      await supabase.from('assignments').update({ google_calendar_event_id: null }).eq('id', assignment.id)
+      await persistEventId(assignment.id, null)
       await loadAssignments()
     } else {
-      const eventId = await createCalendarEvent(assignment.shift, googleToken)
+      const eventId = await createCalendarEvent(assignment.shift, googleToken, assignment.id)
       if (eventId) {
-        await supabase.from('assignments').update({ google_calendar_event_id: eventId }).eq('id', assignment.id)
+        await persistEventId(assignment.id, eventId)
         await loadAssignments()
       } else {
         alert('Kon agenda-item niet aanmaken. Je Google token is mogelijk verlopen — log opnieuw in.')
@@ -160,6 +168,21 @@ export default function MijnRooster() {
     if (!googleToken) { setTokenWarning(true); return }
     const unsynced = assignments.filter(a => !a.google_calendar_event_id)
     for (const a of unsynced) await syncShift(a)
+  }
+
+  // Ruimt dubbele agenda-afspraken op en zet elke dienst nog één keer neer.
+  async function repairSync() {
+    if (!googleToken) { setTokenWarning(true); return }
+    setRepairing(true)
+    const [y, m] = selectedMonth.split('-').map(Number)
+    const approved = assignments.filter(a => a.status === 'approved').map(a => ({ id: a.id, shift: a.shift }))
+    const removed = await repairMonthEvents(googleToken, approved, y, m)
+    for (const a of approved) await persistEventId(a.id, eventIdFor(a.id))
+    await loadAssignments()
+    setRepairing(false)
+    alert(removed > 0
+      ? `${removed} dubbele afspraak/afspraken opgeruimd. Elke dienst staat nu nog één keer in je agenda.`
+      : 'Geen duplicaten gevonden — alles staat netjes één keer in je agenda.')
   }
 
   const approvedAssignments = assignments.filter(a => a.status === 'approved')
@@ -322,15 +345,25 @@ export default function MijnRooster() {
                 : `${approvedAssignments.length - syncedCount} dienst${approvedAssignments.length - syncedCount !== 1 ? 'en' : ''} nog niet gesynchroniseerd`}
             </p>
           </div>
-          <button
-            onClick={syncAll}
-            disabled={!googleToken || syncedCount === approvedAssignments.length || autoSyncing}
-            className="flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-            style={{ backgroundColor: '#3c3c3b' }}
-          >
-            <CalendarSyncIcon className="w-4 h-4" />
-            Alles synchroniseren
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={repairSync}
+              disabled={!googleToken || repairing || autoSyncing}
+              title="Verwijder dubbele afspraken en zet elke dienst één keer in je agenda"
+              className="text-sm font-medium px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
+            >
+              {repairing ? 'Opruimen...' : 'Dubbele opruimen'}
+            </button>
+            <button
+              onClick={syncAll}
+              disabled={!googleToken || syncedCount === approvedAssignments.length || autoSyncing || repairing}
+              className="flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#3c3c3b' }}
+            >
+              <CalendarSyncIcon className="w-4 h-4" />
+              Alles synchroniseren
+            </button>
+          </div>
         </div>
       )}
 

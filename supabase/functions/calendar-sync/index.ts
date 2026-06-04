@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
       const token = await getAccessToken(userId)
       if (!token) return json({ skipped: 'no google token for user' })
 
-      const eventId = await createEvent(shift, token)
+      const eventId = await createEvent(shift, token, newRow.id)
       if (eventId) {
         await admin.from('assignments')
           .update({ google_calendar_event_id: eventId })
@@ -140,15 +140,19 @@ async function getAccessToken(userId: string): Promise<string | null> {
   return tok.access_token as string
 }
 
-async function createEvent(shift: Shift, token: string): Promise<string | null> {
+async function createEvent(shift: Shift, token: string, assignmentId: string): Promise<string | null> {
   const title = shift.shift_type === 'ochtend'
     ? 'Ochtenddienst – ADHDMC Zorgadministratie'
     : 'Middagdienst – ADHDMC Zorgadministratie'
+
+  // Vast id per toewijzing -> opnieuw aanmaken levert nooit een duplicaat op.
+  const id = 'adhdmc' + assignmentId.replace(/-/g, '')
 
   const res = await fetch(CALENDAR_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      id,
       summary: title,
       description: `Dienst zorgadministratie\nTijd: ${shift.start_time.slice(0, 5)} – ${shift.end_time.slice(0, 5)} (${shift.duration_hours}u)`,
       start: { dateTime: `${shift.shift_date}T${shift.start_time}`, timeZone: TIMEZONE },
@@ -163,12 +167,10 @@ async function createEvent(shift: Shift, token: string): Promise<string | null> 
       },
     }),
   })
-  if (!res.ok) {
-    console.error('event aanmaken mislukt:', await res.text())
-    return null
-  }
-  const data = await res.json()
-  return data.id as string
+  // 409 = bestaat al -> geen duplicaat, prima.
+  if (res.ok || res.status === 409) return id
+  console.error('event aanmaken mislukt:', await res.text())
+  return null
 }
 
 async function deleteEvent(eventId: string, token: string): Promise<void> {
