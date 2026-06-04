@@ -20,6 +20,7 @@ export default function MijnRooster() {
   const [autoSyncSuccess, setAutoSyncSuccess] = useState(false)
   const [autoSynced, setAutoSynced] = useState(false)
   const [repairing, setRepairing] = useState(false)
+  const [autoCleaned, setAutoCleaned] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -57,6 +58,50 @@ export default function MijnRooster() {
     setAutoSynced(true)
     runAutoSync(unsynced, googleToken)
   }, [loading, googleToken, assignments, autoSynced])
+
+  // Eenmalige, stille opschoning per gebruiker: verwijdert oude dubbele
+  // agenda-afspraken (van vóór de fix) en houdt er één per dienst over.
+  // Draait automatisch op de achtergrond zodra iemand Mijn rooster opent.
+  useEffect(() => {
+    if (!profile || !googleToken || autoCleaned) return
+    const key = `cal-cleaned-v1-${profile.id}`
+    if (localStorage.getItem(key)) { setAutoCleaned(true); return }
+    setAutoCleaned(true)
+    runAutoCleanup(googleToken)
+      .then(() => localStorage.setItem(key, '1'))
+      .catch(() => {})
+  }, [profile, googleToken, autoCleaned])
+
+  async function runAutoCleanup(token: string) {
+    const now = new Date()
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+
+    // Alle goedgekeurde diensten van deze gebruiker vanaf de huidige maand.
+    const { data } = await supabase
+      .from('assignments')
+      .select('id, status, shifts(*)')
+      .eq('user_id', profile!.id)
+      .eq('status', 'approved')
+
+    const items = (data || [])
+      .map(a => ({ id: a.id, shift: (a as any).shifts as Shift }))
+      .filter(it => it.shift && it.shift.shift_date >= monthStart)
+    if (items.length === 0) return
+
+    // Per maand groeperen en opschonen.
+    const byMonth = new Map<string, { id: string; shift: Shift }[]>()
+    for (const it of items) {
+      const key = it.shift.shift_date.slice(0, 7)
+      if (!byMonth.has(key)) byMonth.set(key, [])
+      byMonth.get(key)!.push(it)
+    }
+    for (const [key, group] of byMonth) {
+      const [y, m] = key.split('-').map(Number)
+      await repairMonthEvents(token, group, y, m)
+      for (const a of group) await persistEventId(a.id, eventIdFor(a.id))
+    }
+    await loadAssignments()
+  }
 
   async function runAutoSync(unsynced: AssignmentWithShift[], token: string) {
     setAutoSyncing(true)
