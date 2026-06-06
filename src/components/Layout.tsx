@@ -19,6 +19,7 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [swapCount, setSwapCount] = useState(0)
 
   useEffect(() => {
     if (!profile) return
@@ -28,6 +29,14 @@ export default function Layout({ children }: LayoutProps) {
       .eq('user_id', profile.id)
       .eq('read', false)
       .then(({ count }) => setUnreadCount(count ?? 0))
+
+    // Aantal openstaande ruilverzoeken die op jouw goedkeuring wachten.
+    supabase
+      .from('shift_swaps')
+      .select('id', { count: 'exact', head: true })
+      .eq('target_user_id', profile.id)
+      .eq('status', 'pending')
+      .then(({ count }) => setSwapCount(count ?? 0))
 
     const channel = supabase
       .channel('inbox-badge')
@@ -81,6 +90,20 @@ export default function Layout({ children }: LayoutProps) {
                     {label}
                   </NavLink>
                 ))}
+                <NavLink to="/ruilverzoeken" className={navClass}>
+                  <div className="relative">
+                    <SwapIcon className="w-4 h-4" />
+                    {swapCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                    )}
+                  </div>
+                  Ruilen
+                  {swapCount > 0 && (
+                    <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full leading-none">
+                      {swapCount}
+                    </span>
+                  )}
+                </NavLink>
                 {isAdmin && (
                   <NavLink to="/admin" className={navClass}>
                     <CogIcon className="w-4 h-4" />
@@ -151,6 +174,15 @@ export default function Layout({ children }: LayoutProps) {
                   {label}
                 </NavLink>
               ))}
+              <NavLink to="/ruilverzoeken" className={mobileNavClass} onClick={() => setMenuOpen(false)}>
+                <div className="relative">
+                  <SwapIcon className="w-5 h-5" />
+                  {swapCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                  )}
+                </div>
+                Ruilen{swapCount > 0 ? ` (${swapCount})` : ''}
+              </NavLink>
               {isAdmin && (
                 <NavLink to="/admin" className={mobileNavClass} onClick={() => setMenuOpen(false)}>
                   <CogIcon className="w-5 h-5" />
@@ -216,6 +248,14 @@ function ClockIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+function SwapIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
     </svg>
   )
 }
