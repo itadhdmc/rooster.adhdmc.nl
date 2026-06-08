@@ -1,6 +1,7 @@
 export type Role = 'student' | 'admin'
 export type ShiftType = 'ochtend' | 'middag'
 export type AssignmentStatus = 'pending' | 'approved'
+export type Attendance = 'gewerkt' | 'ziek' | 'afwezig'
 
 export interface Profile {
   id: string
@@ -68,6 +69,7 @@ export interface Assignment {
   google_calendar_event_id: string | null
   notified: boolean
   status: AssignmentStatus
+  attendance: Attendance
 }
 
 export type SwapStatus = 'pending' | 'employee_approved' | 'admin_approved' | 'rejected'

@@ -18,16 +18,21 @@ export default function RoosterBeheer() {
   const [processing, setProcessing] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [showPendingPanel, setShowPendingPanel] = useState(false)
+  const [attendance, setAttendance] = useState<Record<string, string>>({})
 
   useEffect(() => { loadAll() }, [periodId])
 
   async function loadAll() {
     if (!periodId) return
-    const [{ data: p }, { data: s }, { data: st }] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: st }, { data: att }] = await Promise.all([
       supabase.from('roster_periods').select('*').eq('id', periodId).single(),
       supabase.from('shifts_with_assignments').select('*').eq('period_id', periodId).order('shift_date').order('shift_type'),
       supabase.from('profiles').select('*').eq('role', 'student').eq('active', true),
+      supabase.from('assignments').select('id, attendance, shifts!inner(period_id)').eq('shifts.period_id', periodId),
     ])
+    const attMap: Record<string, string> = {}
+    for (const a of att || []) attMap[(a as any).id] = (a as any).attendance
+    setAttendance(attMap)
     setPeriod(p)
     setShifts(s || [])
     setStudents(st || [])
@@ -71,6 +76,14 @@ export default function RoosterBeheer() {
     if (blocked > 0) {
       alert(`${blocked} aanvraag/aanvragen niet goedgekeurd: de student zou daarmee boven de maandlimiet (max uren) uitkomen.`)
     }
+  }
+
+  async function markAttendance(assignmentId: string, value: string) {
+    setProcessing(assignmentId)
+    const { error } = await supabase.from('assignments').update({ attendance: value }).eq('id', assignmentId)
+    if (error) alert('Aanwezigheid bijwerken mislukt: ' + error.message)
+    await loadAll()
+    setProcessing(null)
   }
 
   async function directAssign(shiftId: string, userId: string) {
@@ -388,21 +401,43 @@ export default function RoosterBeheer() {
                       <div className="mb-4">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Ingeroosterd ({approved.length})</p>
                         <div className="space-y-2">
-                          {approved.map(s => (
-                            <div key={s.user_id} className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                                <span className="text-sm font-semibold text-dark">{s.full_name || s.email}</span>
+                          {approved.map(s => {
+                            const att = attendance[s.assignment_id] || 'gewerkt'
+                            const rowStyle = att === 'ziek'
+                              ? 'bg-amber-50 border-amber-100'
+                              : att === 'afwezig'
+                              ? 'bg-rose-50 border-rose-100'
+                              : 'bg-emerald-50 border-emerald-100'
+                            const dotStyle = att === 'ziek' ? 'bg-amber-400' : att === 'afwezig' ? 'bg-rose-400' : 'bg-emerald-400'
+                            return (
+                              <div key={s.user_id} className={`flex items-center justify-between gap-2 border rounded-xl px-3 py-2.5 ${rowStyle}`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotStyle}`} />
+                                  <span className="text-sm font-semibold text-dark truncate">{s.full_name || s.email}</span>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <select
+                                    value={att}
+                                    onChange={e => markAttendance(s.assignment_id, e.target.value)}
+                                    disabled={processing === s.assignment_id}
+                                    title="Aanwezigheid voor de urenregistratie"
+                                    className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-dark focus:outline-none focus:border-salmon-400 disabled:opacity-50"
+                                  >
+                                    <option value="gewerkt">Gewerkt</option>
+                                    <option value="ziek">Ziek</option>
+                                    <option value="afwezig">Afwezig</option>
+                                  </select>
+                                  <button
+                                    onClick={() => removeAssignment(s.assignment_id)}
+                                    disabled={processing === s.assignment_id}
+                                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
+                                  >
+                                    {processing === s.assignment_id ? '...' : 'Verwijderen'}
+                                  </button>
+                                </div>
                               </div>
-                              <button
-                                onClick={() => removeAssignment(s.assignment_id)}
-                                disabled={processing === s.assignment_id}
-                                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
-                              >
-                                {processing === s.assignment_id ? '...' : 'Verwijderen'}
-                              </button>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )}

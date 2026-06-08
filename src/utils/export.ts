@@ -18,6 +18,8 @@ interface StudentTotals {
   ochtend: number
   middag: number
   hours: number
+  sick: number
+  absent: number
 }
 
 // Nederlandse getalnotatie (komma als decimaalteken).
@@ -50,11 +52,24 @@ function triggerDownload(filename: string, csv: string) {
  * en totaal uren. Bedoeld voor de financiële administratie.
  */
 export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boolean; message?: string }> {
-  const { data, error } = await supabase
+  const shiftCols = 'shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours, period_id)'
+
+  // Probeer met aanwezigheid; valt terug als de kolom nog niet bestaat.
+  let { data, error } = await supabase
     .from('assignments')
-    .select('user_id, shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours, period_id)')
+    .select(`user_id, attendance, ${shiftCols}`)
     .eq('status', 'approved')
     .eq('shifts.period_id', period.id)
+
+  if (error) {
+    const fb = await supabase
+      .from('assignments')
+      .select(`user_id, ${shiftCols}`)
+      .eq('status', 'approved')
+      .eq('shifts.period_id', period.id)
+    data = (fb.data || []).map((r: any) => ({ ...r, attendance: 'gewerkt' }))
+    error = fb.error
+  }
 
   if (error) return { ok: false, message: error.message }
   if (!data || data.length === 0) return { ok: false, message: 'Geen goedgekeurde diensten in deze periode.' }
@@ -82,9 +97,15 @@ export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boo
         ochtend: 0,
         middag: 0,
         hours: 0,
+        sick: 0,
+        absent: 0,
       }
       totals.set(row.user_id, t)
     }
+    const att = row.attendance || 'gewerkt'
+    if (att === 'ziek') { t.sick += 1; continue }
+    if (att === 'afwezig') { t.absent += 1; continue }
+    // Alleen 'gewerkt' telt als gewerkte tijd.
     t.days.add(shift.shift_date)
     t.shifts += 1
     if (shift.shift_type === 'ochtend') t.ochtend += 1
@@ -94,7 +115,7 @@ export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boo
 
   const rows = [...totals.values()].sort((a, b) => a.name.localeCompare(b.name))
 
-  const header = ['Naam', 'E-mail', 'Gewerkte dagen', 'Aantal diensten', 'Ochtenddiensten', 'Middagdiensten', 'Totaal uren']
+  const header = ['Naam', 'E-mail', 'Gewerkte dagen', 'Gewerkte diensten', 'Ochtenddiensten', 'Middagdiensten', 'Gewerkte uren', 'Ziek (diensten)', 'Afwezig (diensten)']
   const lines = [header.map(cell).join(';')]
   for (const r of rows) {
     lines.push([
@@ -105,6 +126,8 @@ export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boo
       r.ochtend,
       r.middag,
       cell(nl(r.hours)),
+      r.sick,
+      r.absent,
     ].join(';'))
   }
   // Totaalregel onderaan.
@@ -114,6 +137,8 @@ export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boo
     rows.reduce((n, r) => n + r.ochtend, 0),
     rows.reduce((n, r) => n + r.middag, 0),
     cell(nl(rows.reduce((n, r) => n + r.hours, 0))),
+    rows.reduce((n, r) => n + r.sick, 0),
+    rows.reduce((n, r) => n + r.absent, 0),
   ].join(';'))
 
   const monthName = MONTHS_NL[period.month - 1]
