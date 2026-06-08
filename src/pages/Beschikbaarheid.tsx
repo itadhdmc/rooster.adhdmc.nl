@@ -105,7 +105,7 @@ export default function Beschikbaarheid() {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const weekDays = getWeekDays(weekOffset)
   const weekStart = weekDays[0]
-  const weekEnd = weekDays[4]
+  const weekEnd = weekDays[5] // t/m zaterdag (was per ongeluk vrijdag)
 
   // De "startweek" van de gekozen maand (deze week als het de huidige maand is).
   const monthHomeOffset = selectedPeriod

@@ -33,6 +33,12 @@ export function isSaturday(date: Date): boolean {
   return date.getDay() === 6
 }
 
+// Woensdag (3) en zaterdag (6) zijn altijd voor maar 1 student.
+export function isSingleStudentDay(date: Date): boolean {
+  const d = date.getDay()
+  return d === 3 || d === 6
+}
+
 export function monthLabel(year: number, month: number): string {
   return `${MONTHS_NL[month - 1]} ${year}`
 }

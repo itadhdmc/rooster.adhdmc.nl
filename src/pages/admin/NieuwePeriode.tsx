@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, dateToISO, monthLabel } from '../../utils/dates'
+import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, isSingleStudentDay, dateToISO, monthLabel } from '../../utils/dates'
 
 const SHIFT_TEMPLATES = [
   { shift_type: 'ochtend' as const, start_time: '08:30', end_time: '12:30', duration_hours: 4 },
@@ -63,8 +63,8 @@ export default function NieuwePeriode() {
           start_time: template.start_time,
           end_time: template.end_time,
           duration_hours: template.duration_hours,
-          // Zaterdag: altijd maar 1 student.
-          max_students: isSaturday(day) ? 1 : maxStudents,
+          // Woensdag en zaterdag: altijd maar 1 student.
+          max_students: isSingleStudentDay(day) ? 1 : maxStudents,
         })
       }
     }
@@ -172,6 +172,7 @@ export default function NieuwePeriode() {
             />
             <span className="text-sm text-gray-400">student(en) per dienst</span>
           </div>
+          <p className="text-xs text-gray-400 mt-1.5">Woensdag en zaterdag zijn altijd voor maar 1 student.</p>
         </div>
 
         {/* Zaterdag */}
@@ -196,7 +197,7 @@ export default function NieuwePeriode() {
         <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: '#fff1f0', color: '#f87369' }}>
           {totalShifts} diensten worden aangemaakt voor {monthLabel(year, month)}
           {includeOchtend && includeMiddag && ' (ochtend + middag per dag)'}
-          {includeSaturday && saturdays.length > 0 && ', zaterdagen met max 1 student'}
+          {'. Woensdagen'}{includeSaturday && saturdays.length > 0 ? ' en zaterdagen' : ''}{' krijgen max 1 student.'}
         </div>
 
         {error && (
