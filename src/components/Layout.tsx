@@ -215,7 +215,7 @@ export default function Layout({ children }: LayoutProps) {
 
       <footer className="border-t border-gray-100 mt-4">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p className="text-xs text-gray-400">ADHDMC Medisch Centrum · Roostersysteem</p>
+          <p className="text-xs text-gray-400">ADHD Medisch Centrum · Roostersysteem</p>
           <p className="text-xs text-gray-400">
             Vragen of problemen?{' '}
             <a href="mailto:ictservicedesk@adhdmc.nl" className="font-semibold text-dark hover:text-salmon-500 transition-colors">
