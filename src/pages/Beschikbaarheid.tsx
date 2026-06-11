@@ -57,13 +57,19 @@ export default function Beschikbaarheid() {
   }, [selectedPeriod?.id])
 
   async function loadPeriods() {
+    // Ook gepubliceerde (gesloten) periodes tonen: dan zie je het rooster
+    // en wie er werkt, alleen kun je je niet meer aanmelden.
     const { data } = await supabase
       .from('roster_periods')
       .select('*')
-      .or('availability_open.eq.true,second_round_open.eq.true')
+      .or('availability_open.eq.true,second_round_open.eq.true,roster_published.eq.true')
       .order('year').order('month')
     setPeriods(data || [])
-    if (data?.length) setSelectedPeriod(data[0])
+    if (data?.length) {
+      // Open inschrijving eerst; anders de meest recente gepubliceerde.
+      const open = data.find(p => p.availability_open || p.second_round_open)
+      setSelectedPeriod(open || data[data.length - 1])
+    }
     setLoading(false)
   }
 
@@ -103,6 +109,7 @@ export default function Beschikbaarheid() {
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
+  const signupOpen = !!(selectedPeriod && (selectedPeriod.availability_open || selectedPeriod.second_round_open))
   const weekDays = getWeekDays(weekOffset)
   const weekStart = weekDays[0]
   const weekEnd = weekDays[5] // t/m zaterdag (was per ongeluk vrijdag)
@@ -141,8 +148,8 @@ export default function Beschikbaarheid() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
         </div>
-        <h2 className="text-lg font-bold text-dark">Geen open inschrijving</h2>
-        <p className="text-gray-400 text-sm mt-2">Er is momenteel geen periode open voor inschrijving.</p>
+        <h2 className="text-lg font-bold text-dark">Geen rooster beschikbaar</h2>
+        <p className="text-gray-400 text-sm mt-2">Er is momenteel geen open inschrijving of gepubliceerd rooster.</p>
       </div>
     )
   }
@@ -152,10 +159,12 @@ export default function Beschikbaarheid() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-dark">Inschrijven</h1>
+          <h1 className="text-2xl font-bold text-dark">{signupOpen ? 'Inschrijven' : 'Rooster'}</h1>
           <p className="text-gray-400 text-sm mt-0.5">
             {selectedPeriod
-              ? <>Diensten in <span className="font-semibold text-dark capitalize">{monthLabel(selectedPeriod.year, selectedPeriod.month)}</span> · klik op + om je aan te melden.</>
+              ? signupOpen
+                ? <>Diensten in <span className="font-semibold text-dark capitalize">{monthLabel(selectedPeriod.year, selectedPeriod.month)}</span> · klik op + om je aan te melden.</>
+                : <>Rooster van <span className="font-semibold text-dark capitalize">{monthLabel(selectedPeriod.year, selectedPeriod.month)}</span> · de inschrijving is gesloten. Ruilen kan via Mijn rooster.</>
               : 'Klik op + om je aan te melden voor een dienst.'}
           </p>
         </div>
@@ -286,27 +295,46 @@ export default function Beschikbaarheid() {
               const isApproved = myAssignment?.status === 'approved'
               const isFull = shift.open_spots <= 0 && !myAssignment
 
+              // Collega's die op deze dienst zijn ingeroosterd (goedgekeurd),
+              // zodat je ziet met wie je werkt en met wie je kunt ruilen.
+              const colleagues = (shift.assigned_students || [])
+                .filter(st => st.status === 'approved' && st.user_id !== profile?.id)
+
               return (
-                <div key={iso} className="flex flex-col items-center justify-between gap-1.5 py-3 px-1.5 border-l border-gray-100 min-h-[110px]">
+                <div key={iso} className="flex flex-col items-center justify-between gap-1.5 py-3 px-1.5 border-l border-gray-100 min-h-[120px]">
                   {/* Tijd + plekken */}
                   <div className="text-center">
                     <p className="text-[10px] text-gray-400 font-semibold leading-none">
                       {shift.start_time.slice(0, 5)}
                     </p>
-                    {!isApproved && !isPending && !isFull && !isPast && (
+                    {signupOpen && !isApproved && !isPending && !isFull && !isPast && (
                       <p className="text-[9px] text-gray-300 mt-0.5 leading-none">
                         {shift.open_spots} plek{shift.open_spots !== 1 ? 'ken' : ''}
                       </p>
                     )}
                   </div>
 
-                  {/* Status dot */}
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    isApproved ? 'bg-indigo-300' :
-                    isPending  ? 'bg-amber-300' :
-                    isFull || isPast ? 'bg-gray-200' :
-                    'bg-emerald-400'
-                  }`} />
+                  {/* Wie werkt er */}
+                  {colleagues.length > 0 ? (
+                    <div className="flex flex-col items-center gap-1 w-full min-w-0">
+                      {colleagues.map(st => (
+                        <span
+                          key={st.user_id}
+                          title={st.full_name || st.email}
+                          className="text-[9px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full leading-none truncate max-w-full"
+                        >
+                          {(st.full_name || st.email).split(' ')[0]}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      isApproved ? 'bg-indigo-300' :
+                      isPending  ? 'bg-amber-300' :
+                      isFull || isPast ? 'bg-gray-200' :
+                      'bg-emerald-400'
+                    }`} />
+                  )}
 
                   {/* Actie */}
                   {isApproved && (
@@ -323,7 +351,7 @@ export default function Beschikbaarheid() {
                       {processing === myAssignment.id ? '...' : 'Afmelden'}
                     </button>
                   )}
-                  {!myAssignment && !isFull && !isPast && (
+                  {signupOpen && !myAssignment && !isFull && !isPast && (
                     <button
                       onClick={() => signUp(shift.id)}
                       disabled={processing === shift.id}
@@ -333,7 +361,7 @@ export default function Beschikbaarheid() {
                       {processing === shift.id ? '...' : 'Aanmelden'}
                     </button>
                   )}
-                  {(isFull || (isPast && !myAssignment)) && (
+                  {signupOpen && (isFull || (isPast && !myAssignment)) && (
                     <span className="text-[10px] text-gray-300 font-medium w-full text-center leading-none">
                       {isFull ? 'vol' : '—'}
                     </span>
@@ -366,6 +394,10 @@ export default function Beschikbaarheid() {
         </span>
         <span className="flex items-center gap-1.5 text-gray-400">
           <span className="w-2 h-2 rounded-full bg-indigo-300 inline-block" /> Ingeroosterd
+        </span>
+        <span className="flex items-center gap-1.5 text-gray-400">
+          <span className="text-[9px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full leading-none">Naam</span>
+          Collega op deze dienst
         </span>
       </div>
     </div>

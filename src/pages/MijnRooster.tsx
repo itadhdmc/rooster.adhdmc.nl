@@ -31,6 +31,8 @@ export default function MijnRooster() {
   const [incomingSwapCount, setIncomingSwapCount] = useState(0)
   const [swapModal, setSwapModal] = useState<AssignmentWithShift | null>(null)
   const [swappable, setSwappable] = useState<SwappableAssignment[]>([])
+  // Wie werkt er nog meer op mijn diensten (voornaam per shift_id).
+  const [colleagues, setColleagues] = useState<Record<string, string[]>>({})
   const [loadingSwappable, setLoadingSwappable] = useState(false)
   const [swapSuccess, setSwapSuccess] = useState(false)
 
@@ -150,6 +152,24 @@ export default function MijnRooster() {
 
     setAssignments(enriched)
     setLoading(false)
+    loadColleagues(enriched.map(a => a.shift_id))
+  }
+
+  // Haal op wie er nog meer op mijn diensten staan, zodat je ziet met
+  // wie je werkt (en dus met wie je zou kunnen ruilen).
+  async function loadColleagues(shiftIds: string[]) {
+    if (shiftIds.length === 0) { setColleagues({}); return }
+    const { data } = await supabase
+      .from('shifts_with_assignments')
+      .select('id, assigned_students')
+      .in('id', shiftIds)
+    const map: Record<string, string[]> = {}
+    for (const row of data || []) {
+      map[(row as any).id] = ((row as any).assigned_students || [])
+        .filter((s: any) => s.status === 'approved' && s.user_id !== profile!.id)
+        .map((s: any) => (s.full_name || s.email).split(' ')[0])
+    }
+    setColleagues(map)
   }
 
   // Slaat het agenda-id op via een RPC (studenten mogen de tabel niet direct
@@ -195,7 +215,9 @@ export default function MijnRooster() {
     setSwapModal(assignment)
     setLoadingSwappable(true)
     const { data } = await supabase.rpc('get_swappable_assignments')
-    setSwappable((data as SwappableAssignment[]) || [])
+    const sorted = ((data as SwappableAssignment[]) || [])
+      .sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))
+    setSwappable(sorted)
     setLoadingSwappable(false)
   }
 
@@ -450,6 +472,11 @@ export default function MijnRooster() {
                     <p className="text-xs text-gray-400 mt-0.5">
                       {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} · {a.shift.duration_hours}u
                     </p>
+                    {(colleagues[a.shift_id] || []).length > 0 && (
+                      <p className="text-xs text-indigo-400 font-medium mt-0.5">
+                        Samen met {(colleagues[a.shift_id] || []).join(' en ')}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -519,7 +546,7 @@ export default function MijnRooster() {
               ) : (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-                    Kies een dienst om voor te ruilen
+                    Kies de dienst van een collega om mee te ruilen
                   </p>
                   {swappable.map(a => (
                     <button
@@ -530,12 +557,20 @@ export default function MijnRooster() {
                       <p className="text-sm font-semibold text-dark">{a.full_name}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {new Date(a.shift_date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}
-                        {' · '}{a.shift_type}{' · '}{a.start_time.slice(0, 5)}
+                        {' · '}{a.shift_type}{' · '}{a.start_time.slice(0, 5)} – {a.end_time.slice(0, 5)}
                       </p>
                     </button>
                   ))}
                 </div>
               )}
+            </div>
+            {/* Hoe werkt ruilen */}
+            <div className="px-5 py-3.5 border-t border-gray-100 bg-gray-50/60 flex-shrink-0 rounded-b-2xl">
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                <span className="font-semibold text-gray-500">Zo werkt ruilen:</span>{' '}
+                1. jij kiest hierboven een dienst van een collega · 2. je collega keurt het verzoek goed
+                · 3. de admin bevestigt de ruil. Daarna worden jullie roosters en agenda's automatisch omgewisseld.
+              </p>
             </div>
           </div>
         </div>

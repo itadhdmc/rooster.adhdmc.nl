@@ -30,14 +30,16 @@ export default function Ruilverzoeken() {
 
   async function rejectSwap(swapId: string) {
     setProcessing(swapId)
-    await supabase.from('shift_swaps').update({ status: 'rejected' }).eq('id', swapId)
+    const { error } = await supabase.from('shift_swaps').update({ status: 'rejected' }).eq('id', swapId)
+    if (error) alert('Afwijzen mislukt: ' + error.message)
     await loadSwaps()
     setProcessing(null)
   }
 
   async function cancelSwap(swapId: string) {
     setProcessing(swapId)
-    await supabase.from('shift_swaps').delete().eq('id', swapId)
+    const { error } = await supabase.from('shift_swaps').delete().eq('id', swapId)
+    if (error) alert('Annuleren mislukt: ' + error.message)
     await loadSwaps()
     setProcessing(null)
   }
@@ -53,7 +55,10 @@ export default function Ruilverzoeken() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-dark">Ruilverzoeken</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Beheer je ruilverzoeken met collega's.</p>
+        <p className="text-gray-400 text-sm mt-0.5">
+          Beheer je ruilverzoeken met collega's. Een ruil is pas definitief nadat je collega
+          én de admin hebben goedgekeurd.
+        </p>
       </div>
 
       {loading ? (
