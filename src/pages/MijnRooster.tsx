@@ -569,7 +569,8 @@ export default function MijnRooster() {
               <p className="text-[11px] text-gray-400 leading-relaxed">
                 <span className="font-semibold text-gray-500">Zo werkt ruilen:</span>{' '}
                 1. jij kiest hierboven een dienst van een collega · 2. je collega keurt het verzoek goed
-                · 3. de admin bevestigt de ruil. Daarna worden jullie roosters en agenda's automatisch omgewisseld.
+                · 3. de admin bevestigt de ruil. Daarna worden jullie roosters omgewisseld.
+                Controleer na een ruil even je Google Agenda.
               </p>
             </div>
           </div>
