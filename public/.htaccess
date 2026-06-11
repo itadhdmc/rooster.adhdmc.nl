@@ -3,6 +3,15 @@ AddType application/javascript .js .mjs
 AddType text/css .css
 AddType image/svg+xml .svg
 
+# Security headers
+<IfModule mod_headers.c>
+  # Voorkom MIME-sniffing en clickjacking (app hoort nooit in een iframe)
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
 # React Router SPA — stuur alle routes naar index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On

@@ -3,10 +3,18 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
 import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday } from '../../utils/dates'
+import { hoursBetween } from '../../utils/shiftTimes'
 
 const DEFAULT_TEMPLATES: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {
   ochtend: { start_time: '08:30', end_time: '12:30', duration_hours: 4 },
   middag: { start_time: '12:00', end_time: '17:30', duration_hours: 5.5 },
+}
+
+// Aanwezigheid + eventuele afwijkende werktijden per toewijzing.
+interface AssignmentMeta {
+  attendance: string
+  custom_start_time: string | null
+  custom_end_time: string | null
 }
 
 export default function RoosterBeheer() {
@@ -18,7 +26,8 @@ export default function RoosterBeheer() {
   const [processing, setProcessing] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [showPendingPanel, setShowPendingPanel] = useState(false)
-  const [attendance, setAttendance] = useState<Record<string, string>>({})
+  const [meta, setMeta] = useState<Record<string, AssignmentMeta>>({})
+  const [timeEdit, setTimeEdit] = useState<{ id: string; start: string; end: string } | null>(null)
 
   useEffect(() => { loadAll() }, [periodId])
 
@@ -28,11 +37,17 @@ export default function RoosterBeheer() {
       supabase.from('roster_periods').select('*').eq('id', periodId).single(),
       supabase.from('shifts_with_assignments').select('*').eq('period_id', periodId).order('shift_date').order('shift_type'),
       supabase.from('profiles').select('*').eq('role', 'student').eq('active', true),
-      supabase.from('assignments').select('id, attendance, shifts!inner(period_id)').eq('shifts.period_id', periodId),
+      supabase.from('assignments').select('*, shifts!inner(period_id)').eq('shifts.period_id', periodId),
     ])
-    const attMap: Record<string, string> = {}
-    for (const a of att || []) attMap[(a as any).id] = (a as any).attendance
-    setAttendance(attMap)
+    const metaMap: Record<string, AssignmentMeta> = {}
+    for (const a of att || []) {
+      metaMap[(a as any).id] = {
+        attendance: (a as any).attendance,
+        custom_start_time: (a as any).custom_start_time ?? null,
+        custom_end_time: (a as any).custom_end_time ?? null,
+      }
+    }
+    setMeta(metaMap)
     setPeriod(p)
     setShifts(s || [])
     setStudents(st || [])
@@ -82,6 +97,39 @@ export default function RoosterBeheer() {
     setProcessing(assignmentId)
     const { error } = await supabase.from('assignments').update({ attendance: value }).eq('id', assignmentId)
     if (error) alert('Aanwezigheid bijwerken mislukt: ' + error.message)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  // Afwijkende werktijden voor één persoon opslaan. Tijden gelijk aan de
+  // standaard van de dienst? Dan resetten we naar NULL (= standaard volgen).
+  async function saveTimes(assignmentId: string, shift: ShiftWithAssignments) {
+    if (!timeEdit) return
+    const { start, end } = timeEdit
+    if (!start || !end || end <= start) {
+      alert('De eindtijd moet na de starttijd liggen.')
+      return
+    }
+    const isDefault = start === shift.start_time.slice(0, 5) && end === shift.end_time.slice(0, 5)
+    setProcessing(assignmentId)
+    const { error } = await supabase.from('assignments').update({
+      custom_start_time: isDefault ? null : start,
+      custom_end_time: isDefault ? null : end,
+    }).eq('id', assignmentId)
+    if (error) alert('Tijden opslaan mislukt: ' + error.message)
+    else setTimeEdit(null)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  async function resetTimes(assignmentId: string) {
+    setProcessing(assignmentId)
+    const { error } = await supabase.from('assignments').update({
+      custom_start_time: null,
+      custom_end_time: null,
+    }).eq('id', assignmentId)
+    if (error) alert('Tijden terugzetten mislukt: ' + error.message)
+    setTimeEdit(null)
     await loadAll()
     setProcessing(null)
   }
@@ -402,7 +450,12 @@ export default function RoosterBeheer() {
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Ingeroosterd ({approved.length})</p>
                         <div className="space-y-2">
                           {approved.map(s => {
-                            const att = attendance[s.assignment_id] || 'gewerkt'
+                            const m = meta[s.assignment_id]
+                            const att = m?.attendance || 'gewerkt'
+                            const isCustom = !!(m?.custom_start_time && m?.custom_end_time)
+                            const effStart = (m?.custom_start_time || shift.start_time).slice(0, 5)
+                            const effEnd = (m?.custom_end_time || shift.end_time).slice(0, 5)
+                            const isTimeEditing = timeEdit?.id === s.assignment_id
                             const rowStyle = att === 'ziek'
                               ? 'bg-amber-50 border-amber-100'
                               : att === 'afwezig'
@@ -410,31 +463,92 @@ export default function RoosterBeheer() {
                               : 'bg-emerald-50 border-emerald-100'
                             const dotStyle = att === 'ziek' ? 'bg-amber-400' : att === 'afwezig' ? 'bg-rose-400' : 'bg-emerald-400'
                             return (
-                              <div key={s.user_id} className={`flex items-center justify-between gap-2 border rounded-xl px-3 py-2.5 ${rowStyle}`}>
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotStyle}`} />
-                                  <span className="text-sm font-semibold text-dark truncate">{s.full_name || s.email}</span>
+                              <div key={s.user_id} className={`border rounded-xl px-3 py-2.5 ${rowStyle}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotStyle}`} />
+                                    <div className="min-w-0">
+                                      <span className="text-sm font-semibold text-dark truncate block">{s.full_name || s.email}</span>
+                                      <button
+                                        onClick={() => setTimeEdit(isTimeEditing ? null : { id: s.assignment_id, start: effStart, end: effEnd })}
+                                        title="Werktijden van deze medewerker aanpassen"
+                                        className={`text-xs flex items-center gap-1 hover:underline ${isCustom ? 'text-indigo-600 font-semibold' : 'text-gray-400'}`}
+                                      >
+                                        {effStart} – {effEnd} · {hoursBetween(effStart, effEnd)}u
+                                        {isCustom && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full leading-none">aangepast</span>}
+                                        <PencilIcon className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <select
+                                      value={att}
+                                      onChange={e => markAttendance(s.assignment_id, e.target.value)}
+                                      disabled={processing === s.assignment_id}
+                                      title="Aanwezigheid voor de urenregistratie"
+                                      className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-dark focus:outline-none focus:border-salmon-400 disabled:opacity-50"
+                                    >
+                                      <option value="gewerkt">Gewerkt</option>
+                                      <option value="ziek">Ziek</option>
+                                      <option value="afwezig">Afwezig</option>
+                                    </select>
+                                    <button
+                                      onClick={() => removeAssignment(s.assignment_id)}
+                                      disabled={processing === s.assignment_id}
+                                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
+                                    >
+                                      {processing === s.assignment_id ? '...' : 'Verwijderen'}
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  <select
-                                    value={att}
-                                    onChange={e => markAttendance(s.assignment_id, e.target.value)}
-                                    disabled={processing === s.assignment_id}
-                                    title="Aanwezigheid voor de urenregistratie"
-                                    className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-dark focus:outline-none focus:border-salmon-400 disabled:opacity-50"
-                                  >
-                                    <option value="gewerkt">Gewerkt</option>
-                                    <option value="ziek">Ziek</option>
-                                    <option value="afwezig">Afwezig</option>
-                                  </select>
-                                  <button
-                                    onClick={() => removeAssignment(s.assignment_id)}
-                                    disabled={processing === s.assignment_id}
-                                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
-                                  >
-                                    {processing === s.assignment_id ? '...' : 'Verwijderen'}
-                                  </button>
-                                </div>
+
+                                {/* Tijden-editor voor deze medewerker */}
+                                {isTimeEditing && timeEdit && (
+                                  <div className="mt-2.5 pt-2.5 border-t border-black/5 flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-gray-500 font-medium">Werktijd:</span>
+                                    <input
+                                      type="time"
+                                      value={timeEdit.start}
+                                      onChange={e => setTimeEdit({ ...timeEdit, start: e.target.value })}
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-salmon-400"
+                                    />
+                                    <span className="text-xs text-gray-400">tot</span>
+                                    <input
+                                      type="time"
+                                      value={timeEdit.end}
+                                      onChange={e => setTimeEdit({ ...timeEdit, end: e.target.value })}
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-salmon-400"
+                                    />
+                                    <span className="text-xs text-gray-400">
+                                      = {timeEdit.start && timeEdit.end && timeEdit.end > timeEdit.start ? `${hoursBetween(timeEdit.start, timeEdit.end)}u` : '—'}
+                                    </span>
+                                    <div className="flex gap-2 ml-auto">
+                                      {isCustom && (
+                                        <button
+                                          onClick={() => resetTimes(s.assignment_id)}
+                                          disabled={processing === s.assignment_id}
+                                          title={`Terug naar de standaardtijd (${shift.start_time.slice(0, 5)} – ${shift.end_time.slice(0, 5)})`}
+                                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
+                                        >
+                                          Standaard
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => saveTimes(s.assignment_id, shift)}
+                                        disabled={processing === s.assignment_id}
+                                        className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                                      >
+                                        {processing === s.assignment_id ? '...' : 'Opslaan'}
+                                      </button>
+                                      <button
+                                        onClick={() => setTimeEdit(null)}
+                                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-dark transition-colors"
+                                      >
+                                        Annuleer
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )
                           })}
@@ -594,6 +708,14 @@ function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: strin
         )}
       </div>
     </div>
+  )
+}
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897l12.682-12.68Z" />
+    </svg>
   )
 }
 

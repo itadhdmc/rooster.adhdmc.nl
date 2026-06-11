@@ -85,7 +85,9 @@ export default function AdminDashboard() {
       <div className="grid sm:grid-cols-3 gap-3">
         <QuickLink to="/admin/studenten" title="Medewerkers" desc="Beheer rollen en contracturen" icon={<UsersIcon />} accent="#6366f1" />
         <QuickLink to="/admin/beschikbaarheid" title="Beschikbaarheid" desc="Ingegeven beschikbaarheid" icon={<ListIcon />} accent="#f87369" />
-        <QuickLink to="/admin/rooster" title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} accent="#3c3c3b" />
+        <QuickLink
+          to={periods.length > 0 ? `/admin/rooster/${periods[periods.length - 1].id}` : '/admin/periodes/nieuw'}
+          title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} accent="#3c3c3b" />
       </div>
 
       {/* Pending swap approvals */}

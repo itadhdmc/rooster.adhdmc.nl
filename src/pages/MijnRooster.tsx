@@ -6,6 +6,7 @@ import { getGoogleToken } from '../lib/auth'
 import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
 import { Shift, Assignment, SwappableAssignment } from '../types'
 import { formatDate, monthLabel } from '../utils/dates'
+import { effectiveShift } from '../utils/shiftTimes'
 
 interface AssignmentWithShift extends Assignment {
   shift: Shift
@@ -79,13 +80,14 @@ export default function MijnRooster() {
     // Alle goedgekeurde diensten van deze gebruiker vanaf de huidige maand.
     const { data } = await supabase
       .from('assignments')
-      .select('id, status, shifts(*)')
+      .select('*, shifts(*)')
       .eq('user_id', profile!.id)
       .eq('status', 'approved')
 
     const items = (data || [])
-      .map(a => ({ id: a.id, shift: (a as any).shifts as Shift }))
-      .filter(it => it.shift && it.shift.shift_date >= monthStart)
+      .filter(a => (a as any).shifts)
+      .map(a => ({ id: a.id, shift: effectiveShift((a as any).shifts as Shift, a) }))
+      .filter(it => it.shift.shift_date >= monthStart)
     if (items.length === 0) return
 
     // Per maand groeperen en opschonen.
@@ -142,7 +144,9 @@ export default function MijnRooster() {
         if (a.status !== b.status) return a.status === 'approved' ? -1 : 1
         return (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date)
       })
-      .map(a => ({ ...a, shift: (a as any).shifts as Shift }))
+      // Afwijkende werktijden (door de admin ingesteld) gaan vóór de
+      // standaardtijden — ook in de agenda-sync en urentelling.
+      .map(a => ({ ...a, shift: effectiveShift((a as any).shifts as Shift, a) }))
 
     setAssignments(enriched)
     setLoading(false)

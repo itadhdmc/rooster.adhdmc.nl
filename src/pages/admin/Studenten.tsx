@@ -114,7 +114,8 @@ export default function Studenten() {
   const sharedRowProps = { editing, onEdit: (s: Profile) => {
     setEditing(s.id)
     setEditData({ full_name: s.full_name, contract_min_hours: s.contract_min_hours, contract_max_hours: s.contract_max_hours })
-  }, onSave: saveEdit, editData, setEditData, onToggle: toggleActive, onSetAdmin: setAdmin,
+  }, onSave: saveEdit, onCancel: () => { setEditing(null); setEditData({}) },
+    editData, setEditData, onToggle: toggleActive, onSetAdmin: setAdmin,
     onDelete: (id: string, name: string) => setDeleteConfirm({ id, name }) }
 
   return (
@@ -277,12 +278,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function StudentRow({
-  student, editing, onEdit, onSave, editData, setEditData, onToggle, onSetAdmin, onDelete,
+  student, editing, onEdit, onSave, onCancel, editData, setEditData, onToggle, onSetAdmin, onDelete,
 }: {
   student: Profile
   editing: string | null
   onEdit: (s: Profile) => void
   onSave: (id: string) => void
+  onCancel: () => void
   editData: Partial<Profile>
   setEditData: (d: Partial<Profile>) => void
   onToggle: (s: Profile) => void
@@ -320,7 +322,7 @@ function StudentRow({
               style={{ backgroundColor: '#f87369' }}>
               Opslaan
             </button>
-            <button onClick={() => setEditData({})}
+            <button onClick={onCancel}
               className="text-xs bg-gray-100 text-gray-600 px-3 py-2 rounded-xl hover:bg-gray-200">
               Annuleer
             </button>

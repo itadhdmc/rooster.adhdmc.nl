@@ -35,6 +35,9 @@ geeft een refresh-token af.
 ```bash
 supabase secrets set GOOGLE_CLIENT_ID=...     --project-ref <ref>
 supabase secrets set GOOGLE_CLIENT_SECRET=... --project-ref <ref>
+# Gedeeld geheim om de webhook-endpoint af te schermen (verzin een lange
+# willekeurige string, bijv. via: openssl rand -hex 32):
+supabase secrets set WEBHOOK_SECRET=...       --project-ref <ref>
 # SUPABASE_URL en SUPABASE_SERVICE_ROLE_KEY zijn automatisch beschikbaar.
 ```
 
@@ -48,9 +51,10 @@ Supabase Dashboard → **Database → Webhooks → Create a new hook**:
 - Table: `assignments`
 - Events: `Insert`, `Update`, `Delete`
 - Type: **Supabase Edge Functions** → `calendar-sync`
-- Voeg een header toe met een gedeeld geheim als je de functie wilt beveiligen
-  (optioneel; de functie staat nu open — overweeg een check op een
-  `Authorization`-header tegen een secret).
+- HTTP Headers: voeg `x-webhook-secret` toe met dezelfde waarde als de
+  `WEBHOOK_SECRET` secret. De functie weigert dan alle aanroepen zonder
+  dit geheim. (Zonder ingestelde `WEBHOOK_SECRET` accepteert de functie
+  alles — alleen voor de overgangsfase.)
 
 ## Testen
 1. Log één keer in als student (zodat de refresh-token wordt opgeslagen in
@@ -71,5 +75,6 @@ studenten die nog geen opgeslagen refresh-token hebben.
   toevoegen die de bijbehorende events update.
 - **Ruil goedgekeurd** (`execute_shift_swap`): zorg dat die RPC de
   `assignments` zo wijzigt dat de webhook vuurt (oude event weg, nieuw erbij).
-- Beveilig de webhook-endpoint met een gedeeld geheim.
+- ~~Beveilig de webhook-endpoint met een gedeeld geheim.~~ ✅ Gedaan: zet
+  `WEBHOOK_SECRET` en de bijbehorende `x-webhook-secret` header (zie boven).
 ```

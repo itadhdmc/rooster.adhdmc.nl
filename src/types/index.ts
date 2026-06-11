@@ -70,6 +70,9 @@ export interface Assignment {
   notified: boolean
   status: AssignmentStatus
   attendance: Attendance
+  // Afwijkende werktijden voor deze persoon; null = standaardtijden van de dienst.
+  custom_start_time: string | null
+  custom_end_time: string | null
 }
 
 export type SwapStatus = 'pending' | 'employee_approved' | 'admin_approved' | 'rejected'

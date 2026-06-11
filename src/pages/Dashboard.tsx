@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { RosterPeriod, Shift, Assignment } from '../types'
 import { monthLabel, formatDate } from '../utils/dates'
+import { effectiveShift } from '../utils/shiftTimes'
 
 interface UpcomingShift {
   shift: Shift
@@ -57,7 +58,7 @@ export default function Dashboard() {
           })
           .sort((a, b) => (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date))
           .slice(0, 5)
-          .map(a => ({ shift: (a as any).shifts as Shift, assigned_at: a.assigned_at }))
+          .map(a => ({ shift: effectiveShift((a as any).shifts as Shift, a), assigned_at: a.assigned_at }))
 
         setUpcomingShifts(upcoming)
 
@@ -65,8 +66,9 @@ export default function Dashboard() {
         let wh = 0, mh = 0
         for (const a of assignments) {
           if (a.status !== 'approved') continue
-          const shift = (a as any).shifts as Shift
-          if (!shift) continue
+          const raw = (a as any).shifts as Shift
+          if (!raw) continue
+          const shift = effectiveShift(raw, a)
           const d = new Date(shift.shift_date)
           if (d >= today && d <= weekEnd) wh += Number(shift.duration_hours)
           if (d.getFullYear() === year && d.getMonth() + 1 === month) mh += Number(shift.duration_hours)

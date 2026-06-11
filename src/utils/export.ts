@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { RosterPeriod } from '../types'
 import { monthLabel, MONTHS_NL } from './dates'
+import { hoursBetween } from './shiftTimes'
 
 interface ExportRow {
   shift_date: string
@@ -54,22 +55,13 @@ function triggerDownload(filename: string, csv: string) {
 export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boolean; message?: string }> {
   const shiftCols = 'shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours, period_id)'
 
-  // Probeer met aanwezigheid; valt terug als de kolom nog niet bestaat.
-  let { data, error } = await supabase
+  // '*' zodat ook attendance en de afwijkende werktijden meekomen,
+  // ongeacht welke migraties al zijn uitgevoerd.
+  const { data, error } = await supabase
     .from('assignments')
-    .select(`user_id, attendance, ${shiftCols}`)
+    .select(`*, ${shiftCols}`)
     .eq('status', 'approved')
     .eq('shifts.period_id', period.id)
-
-  if (error) {
-    const fb = await supabase
-      .from('assignments')
-      .select(`user_id, ${shiftCols}`)
-      .eq('status', 'approved')
-      .eq('shifts.period_id', period.id)
-    data = (fb.data || []).map((r: any) => ({ ...r, attendance: 'gewerkt' }))
-    error = fb.error
-  }
 
   if (error) return { ok: false, message: error.message }
   if (!data || data.length === 0) return { ok: false, message: 'Geen goedgekeurde diensten in deze periode.' }
@@ -105,12 +97,15 @@ export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boo
     const att = row.attendance || 'gewerkt'
     if (att === 'ziek') { t.sick += 1; continue }
     if (att === 'afwezig') { t.absent += 1; continue }
-    // Alleen 'gewerkt' telt als gewerkte tijd.
+    // Alleen 'gewerkt' telt als gewerkte tijd; afwijkende werktijden
+    // van deze medewerker gaan vóór de standaardduur van de dienst.
     t.days.add(shift.shift_date)
     t.shifts += 1
     if (shift.shift_type === 'ochtend') t.ochtend += 1
     else if (shift.shift_type === 'middag') t.middag += 1
-    t.hours += Number(shift.duration_hours)
+    t.hours += row.custom_start_time && row.custom_end_time
+      ? hoursBetween(row.custom_start_time, row.custom_end_time)
+      : Number(shift.duration_hours)
   }
 
   const rows = [...totals.values()].sort((a, b) => a.name.localeCompare(b.name))

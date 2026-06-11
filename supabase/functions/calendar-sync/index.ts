@@ -12,6 +12,9 @@
 //
 // Benodigde secrets (supabase secrets set ...):
 //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+//   WEBHOOK_SECRET (aanbevolen) — zelfde waarde als de
+//     'x-webhook-secret' header op de Database Webhook. Zonder deze
+//     secret accepteert de functie elke aanroep (zoals voorheen).
 // Automatisch aanwezig in de functie-omgeving:
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // ============================================================
@@ -41,6 +44,22 @@ interface AssignmentRow {
   shift_id: string
   status: string
   google_calendar_event_id: string | null
+  // Afwijkende werktijden voor deze persoon; null = standaardtijden.
+  custom_start_time?: string | null
+  custom_end_time?: string | null
+}
+
+// Pas de afwijkende werktijden van de toewijzing toe op de dienst.
+function applyCustomTimes(shift: Shift, row: AssignmentRow): Shift {
+  if (!row.custom_start_time || !row.custom_end_time) return shift
+  const [sh, sm] = row.custom_start_time.split(':').map(Number)
+  const [eh, em] = row.custom_end_time.split(':').map(Number)
+  return {
+    ...shift,
+    start_time: row.custom_start_time,
+    end_time: row.custom_end_time,
+    duration_hours: Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 100) / 100,
+  }
 }
 
 // Webhook-payload van Supabase (https://supabase.com/docs/guides/database/webhooks)
@@ -53,6 +72,13 @@ interface WebhookPayload {
 
 Deno.serve(async (req) => {
   try {
+    // Weiger aanroepen zonder het gedeelde geheim (als dat is ingesteld);
+    // deze functie heeft service-role-rechten en mag niet open staan.
+    const secret = Deno.env.get('WEBHOOK_SECRET')
+    if (secret && req.headers.get('x-webhook-secret') !== secret) {
+      return json({ error: 'unauthorized' }, 401)
+    }
+
     const payload = (await req.json()) as WebhookPayload
     if (payload.table !== 'assignments') {
       return json({ skipped: 'not assignments table' })
@@ -74,13 +100,26 @@ Deno.serve(async (req) => {
       const token = await getAccessToken(userId)
       if (!token) return json({ skipped: 'no google token for user' })
 
-      const eventId = await createEvent(shift, token, newRow.id)
+      const eventId = await createEvent(applyCustomTimes(shift, newRow), token, newRow.id)
       if (eventId) {
         await admin.from('assignments')
           .update({ google_calendar_event_id: eventId })
           .eq('id', newRow.id)
       }
       return json({ action: 'created', eventId })
+    }
+
+    // Geval 1b: event bestaat al, maar de werktijden zijn aangepast -> bijwerken
+    if (shouldExist && newRow?.google_calendar_event_id && oldRow &&
+        (newRow.custom_start_time !== oldRow.custom_start_time ||
+         newRow.custom_end_time !== oldRow.custom_end_time)) {
+      const shift = await getShift(newRow.shift_id)
+      if (!shift) return json({ error: 'shift not found' }, 404)
+      const token = await getAccessToken(userId)
+      if (!token) return json({ skipped: 'no google token for user' })
+
+      await updateEvent(applyCustomTimes(shift, newRow), token, newRow.google_calendar_event_id)
+      return json({ action: 'updated' })
     }
 
     // Geval 2: zou niet (meer) moeten bestaan, maar er is nog een event -> verwijderen
@@ -140,37 +179,55 @@ async function getAccessToken(userId: string): Promise<string | null> {
   return tok.access_token as string
 }
 
-async function createEvent(shift: Shift, token: string, assignmentId: string): Promise<string | null> {
+function eventBody(shift: Shift) {
   const title = shift.shift_type === 'ochtend'
     ? 'Ochtenddienst – ADHDMC Zorgadministratie'
     : 'Middagdienst – ADHDMC Zorgadministratie'
 
+  return {
+    summary: title,
+    description: `Dienst zorgadministratie\nTijd: ${shift.start_time.slice(0, 5)} – ${shift.end_time.slice(0, 5)} (${shift.duration_hours}u)`,
+    start: { dateTime: `${shift.shift_date}T${shift.start_time}`, timeZone: TIMEZONE },
+    end: { dateTime: `${shift.shift_date}T${shift.end_time}`, timeZone: TIMEZONE },
+    colorId: shift.shift_type === 'ochtend' ? '5' : '3',
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'popup', minutes: 60 },
+        { method: 'email', minutes: 1440 },
+      ],
+    },
+  }
+}
+
+async function createEvent(shift: Shift, token: string, assignmentId: string): Promise<string | null> {
   // Vast id per toewijzing -> opnieuw aanmaken levert nooit een duplicaat op.
   const id = 'adhdmc' + assignmentId.replace(/-/g, '')
 
   const res = await fetch(CALENDAR_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id,
-      summary: title,
-      description: `Dienst zorgadministratie\nTijd: ${shift.start_time.slice(0, 5)} – ${shift.end_time.slice(0, 5)} (${shift.duration_hours}u)`,
-      start: { dateTime: `${shift.shift_date}T${shift.start_time}`, timeZone: TIMEZONE },
-      end: { dateTime: `${shift.shift_date}T${shift.end_time}`, timeZone: TIMEZONE },
-      colorId: shift.shift_type === 'ochtend' ? '5' : '3',
-      reminders: {
-        useDefault: false,
-        overrides: [
-          { method: 'popup', minutes: 60 },
-          { method: 'email', minutes: 1440 },
-        ],
-      },
-    }),
+    body: JSON.stringify({ id, ...eventBody(shift) }),
   })
-  // 409 = bestaat al -> geen duplicaat, prima.
-  if (res.ok || res.status === 409) return id
+  if (res.ok) return id
+  // 409 = bestaat al -> bijwerken zodat de tijden kloppen.
+  if (res.status === 409) {
+    await updateEvent(shift, token, id)
+    return id
+  }
   console.error('event aanmaken mislukt:', await res.text())
   return null
+}
+
+async function updateEvent(shift: Shift, token: string, eventId: string): Promise<void> {
+  const res = await fetch(`${CALENDAR_API}/${eventId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(eventBody(shift)),
+  })
+  if (!res.ok) {
+    console.error('event bijwerken mislukt:', await res.text())
+  }
 }
 
 async function deleteEvent(eventId: string, token: string): Promise<void> {
