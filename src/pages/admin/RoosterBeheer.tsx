@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
-import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday } from '../../utils/dates'
+import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday, isSingleStudentDay } from '../../utils/dates'
 import { hoursBetween } from '../../utils/shiftTimes'
 
 const DEFAULT_TEMPLATES: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {
@@ -28,6 +28,7 @@ export default function RoosterBeheer() {
   const [showPendingPanel, setShowPendingPanel] = useState(false)
   const [meta, setMeta] = useState<Record<string, AssignmentMeta>>({})
   const [timeEdit, setTimeEdit] = useState<{ id: string; start: string; end: string } | null>(null)
+  const [shiftEdit, setShiftEdit] = useState<{ id: string; start: string; end: string; max: number } | null>(null)
 
   useEffect(() => { loadAll() }, [periodId])
 
@@ -134,6 +135,76 @@ export default function RoosterBeheer() {
     setProcessing(null)
   }
 
+  // De standaardtijden van een hele dienst (en max studenten) aanpassen.
+  // Geldt voor iedereen op die dienst, behalve wie een afwijkende tijd heeft.
+  async function saveShiftEdit(shift: ShiftWithAssignments) {
+    if (!shiftEdit) return
+    const { start, end, max } = shiftEdit
+    if (!start || !end || end <= start) { alert('De eindtijd moet na de starttijd liggen.'); return }
+    const approvedCount = (shift.assigned_students || []).filter(a => a.status === 'approved').length
+    if (max < 1) { alert('Minimaal 1 student per dienst.'); return }
+    if (max < approvedCount) {
+      alert(`Er zijn al ${approvedCount} studenten goedgekeurd op deze dienst; het maximum kan niet lager dan dat.`)
+      return
+    }
+    setProcessing(shift.id)
+    const { error } = await supabase.from('shifts').update({
+      start_time: start,
+      end_time: end,
+      duration_hours: hoursBetween(start, end),
+      max_students: max,
+    }).eq('id', shift.id)
+    if (error) alert('Dienst bijwerken mislukt: ' + error.message)
+    else setShiftEdit(null)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  async function deleteShift(shift: ShiftWithAssignments) {
+    const n = (shift.assigned_students || []).length
+    const label = shift.shift_type === 'ochtend' ? 'ochtenddienst' : 'middagdienst'
+    const msg = n > 0
+      ? `Let op: op deze ${label} staan ${n} aanmelding(en)/inroostering(en) die mee verwijderd worden. Weet je het zeker?`
+      : `Deze ${label} verwijderen?`
+    if (!confirm(msg)) return
+    setProcessing(shift.id)
+    const { error } = await supabase.from('shifts').delete().eq('id', shift.id)
+    if (error) alert('Dienst verwijderen mislukt: ' + error.message)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  // Tijden/types die al in deze periode voorkomen; anders de standaard.
+  function periodTemplates(): Record<string, { start_time: string; end_time: string; duration_hours: number }> {
+    const templates: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {}
+    for (const s of shifts) {
+      if (!templates[s.shift_type]) {
+        templates[s.shift_type] = { start_time: s.start_time, end_time: s.end_time, duration_hours: Number(s.duration_hours) }
+      }
+    }
+    return { ...DEFAULT_TEMPLATES, ...templates }
+  }
+
+  // Een ontbrekende ochtend-/middagdienst toevoegen aan de geselecteerde dag.
+  async function addShiftToDay(shiftType: 'ochtend' | 'middag') {
+    if (!period || !selectedDate) return
+    const tpl = periodTemplates()[shiftType]
+    const day = new Date(selectedDate + 'T00:00:00')
+    setProcessing('addshift' + shiftType)
+    const { error } = await supabase.from('shifts').insert({
+      period_id: period.id,
+      shift_date: selectedDate,
+      shift_type: shiftType,
+      start_time: tpl.start_time,
+      end_time: tpl.end_time,
+      duration_hours: tpl.duration_hours,
+      max_students: isSingleStudentDay(day) ? 1 : 2,
+    })
+    if (error) alert('Dienst toevoegen mislukt: ' + error.message)
+    await loadAll()
+    setProcessing(null)
+  }
+
   async function directAssign(shiftId: string, userId: string) {
     setProcessing(shiftId + userId)
     const { error } = await supabase.from('assignments').insert({
@@ -152,13 +223,7 @@ export default function RoosterBeheer() {
     setProcessing('saturdays')
 
     // Gebruik de tijden/types die al in deze periode voorkomen; anders standaard.
-    const templates: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {}
-    for (const s of shifts) {
-      if (!templates[s.shift_type]) {
-        templates[s.shift_type] = { start_time: s.start_time, end_time: s.end_time, duration_hours: Number(s.duration_hours) }
-      }
-    }
-    const types = Object.keys(templates).length ? templates : DEFAULT_TEMPLATES
+    const types = periodTemplates()
 
     const newShifts = []
     for (const iso of dates) {
@@ -193,6 +258,10 @@ export default function RoosterBeheer() {
   const selectedDayShifts = selectedDate
     ? shifts.filter(s => s.shift_date === selectedDate).sort((a, b) => a.shift_type.localeCompare(b.shift_type))
     : []
+
+  // Diensttypes die op de geselecteerde dag nog ontbreken (toe te voegen).
+  const missingDayTypes = (['ochtend', 'middag'] as const)
+    .filter(t => !selectedDayShifts.some(s => s.shift_type === t))
 
   // Students not yet assigned or pending for a given shift
   function unassignedStudents(shift: ShiftWithAssignments): Profile[] {
@@ -407,7 +476,82 @@ export default function RoosterBeheer() {
                       }`}>
                         {shift.assigned_count}/{shift.max_students} goedgekeurd
                       </span>
+                      <button
+                        onClick={() => setShiftEdit(shiftEdit?.id === shift.id ? null : {
+                          id: shift.id,
+                          start: shift.start_time.slice(0, 5),
+                          end: shift.end_time.slice(0, 5),
+                          max: shift.max_students,
+                        })}
+                        title="Tijden en max. studenten van deze dienst bewerken"
+                        className={`p-2 rounded-lg border transition-colors ${
+                          shiftEdit?.id === shift.id
+                            ? 'border-salmon-300 bg-salmon-50 text-salmon-500'
+                            : 'border-gray-200 text-gray-400 hover:text-dark hover:border-gray-300'
+                        }`}
+                      >
+                        <PencilIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteShift(shift)}
+                        disabled={processing === shift.id}
+                        title="Dienst verwijderen"
+                        className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                      >
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </button>
                     </div>
+
+                    {/* Dienst bewerken (tijden + max studenten) */}
+                    {shiftEdit?.id === shift.id && (
+                      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-gray-500 font-medium">Diensttijd:</span>
+                        <input
+                          type="time"
+                          value={shiftEdit.start}
+                          onChange={e => setShiftEdit({ ...shiftEdit, start: e.target.value })}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-salmon-400"
+                        />
+                        <span className="text-xs text-gray-400">tot</span>
+                        <input
+                          type="time"
+                          value={shiftEdit.end}
+                          onChange={e => setShiftEdit({ ...shiftEdit, end: e.target.value })}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-salmon-400"
+                        />
+                        <span className="text-xs text-gray-400">
+                          = {shiftEdit.start && shiftEdit.end && shiftEdit.end > shiftEdit.start ? `${hoursBetween(shiftEdit.start, shiftEdit.end)}u` : '—'}
+                        </span>
+                        <span className="text-xs text-gray-500 font-medium ml-3">Max:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={shiftEdit.max}
+                          onChange={e => setShiftEdit({ ...shiftEdit, max: Number(e.target.value) })}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white w-14 focus:outline-none focus:border-salmon-400"
+                        />
+                        <span className="text-xs text-gray-400">studenten</span>
+                        <div className="flex gap-2 ml-auto">
+                          <button
+                            onClick={() => saveShiftEdit(shift)}
+                            disabled={processing === shift.id}
+                            className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                          >
+                            {processing === shift.id ? '...' : 'Opslaan'}
+                          </button>
+                          <button
+                            onClick={() => setShiftEdit(null)}
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-dark transition-colors"
+                          >
+                            Annuleer
+                          </button>
+                        </div>
+                        <p className="w-full text-[11px] text-gray-400 mt-1">
+                          Geldt voor iedereen op deze dienst — behalve medewerkers met een eigen aangepaste werktijd.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Pending aanvragen */}
                     {pending.length > 0 && (
@@ -426,15 +570,17 @@ export default function RoosterBeheer() {
                                 <button
                                   onClick={() => approveAssignment(s.assignment_id)}
                                   disabled={processing === s.assignment_id}
-                                  className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 bg-emerald-500 hover:bg-emerald-600"
+                                  className="flex items-center gap-1.5 text-xs font-semibold text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 bg-emerald-500 hover:bg-emerald-600 shadow-sm"
                                 >
+                                  <CheckMiniIcon className="w-3.5 h-3.5" />
                                   {processing === s.assignment_id ? '...' : 'Goedkeuren'}
                                 </button>
                                 <button
                                   onClick={() => rejectAssignment(s.assignment_id)}
                                   disabled={processing === s.assignment_id}
-                                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
                                 >
+                                  <XMiniIcon className="w-3.5 h-3.5" />
                                   Afwijzen
                                 </button>
                               </div>
@@ -495,9 +641,10 @@ export default function RoosterBeheer() {
                                     <button
                                       onClick={() => removeAssignment(s.assignment_id)}
                                       disabled={processing === s.assignment_id}
-                                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors disabled:opacity-50"
+                                      title="Van deze dienst halen"
+                                      className="p-2 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
                                     >
-                                      {processing === s.assignment_id ? '...' : 'Verwijderen'}
+                                      <TrashIcon className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </div>
@@ -584,6 +731,26 @@ export default function RoosterBeheer() {
               })}
             </div>
           )}
+
+          {/* Ontbrekende dienst toevoegen aan deze dag */}
+          {missingDayTypes.length > 0 && (
+            <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/40 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-400 font-medium">Dienst toevoegen:</span>
+              {missingDayTypes.map(t => (
+                <button
+                  key={t}
+                  onClick={() => addShiftToDay(t)}
+                  disabled={processing === 'addshift' + t}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
+                >
+                  <PlusMiniIcon className="w-3.5 h-3.5" />
+                  {processing === 'addshift' + t
+                    ? 'Toevoegen...'
+                    : t === 'ochtend' ? 'Ochtenddienst' : 'Middagdienst'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -661,15 +828,17 @@ function QuickApprovePanel({
                 <button
                   onClick={() => onApprove(student.assignment_id)}
                   disabled={processing === student.assignment_id}
-                  className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50 shadow-sm"
                 >
+                  <CheckMiniIcon className="w-3.5 h-3.5" />
                   {processing === student.assignment_id ? '...' : 'Goedkeuren'}
                 </button>
                 <button
                   onClick={() => onReject(student.assignment_id)}
                   disabled={processing === student.assignment_id}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
                 >
+                  <XMiniIcon className="w-3.5 h-3.5" />
                   Afwijzen
                 </button>
               </div>
@@ -715,6 +884,38 @@ function PencilIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897l12.682-12.68Z" />
+    </svg>
+  )
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+    </svg>
+  )
+}
+
+function CheckMiniIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  )
+}
+
+function XMiniIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+function PlusMiniIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
     </svg>
   )
 }
