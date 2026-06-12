@@ -66,9 +66,12 @@ export default function Beschikbaarheid() {
       .order('year').order('month')
     setPeriods(data || [])
     if (data?.length) {
-      // Open inschrijving eerst; anders de meest recente gepubliceerde.
+      // Standaard de maand van vandaag; anders de eerstvolgende open
+      // inschrijving; anders de meest recente periode.
+      const now = new Date()
+      const current = data.find(p => p.year === now.getFullYear() && p.month === now.getMonth() + 1)
       const open = data.find(p => p.availability_open || p.second_round_open)
-      setSelectedPeriod(open || data[data.length - 1])
+      setSelectedPeriod(current || open || data[data.length - 1])
     }
     setLoading(false)
   }
