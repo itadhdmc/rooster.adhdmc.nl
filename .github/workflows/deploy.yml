@@ -32,7 +32,11 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ALLOWED_DOMAIN: adhdmc.nl
 
-      - name: Deploy naar Cloud86 via FTP
+      # De FTP-server van Cloud86 geeft af en toe timeouts; daarom drie
+      # pogingen met een ruime timeout voordat de workflow echt faalt.
+      - name: Deploy naar Cloud86 via FTP (poging 1)
+        id: deploy1
+        continue-on-error: true
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -41,6 +45,49 @@ jobs:
           local-dir: ./dist/
           server-dir: ${{ secrets.FTP_PATH }}
           dangerous-clean-slate: false
+          timeout: 120000
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+
+      - name: Wacht 90s voor nieuwe poging
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 90
+
+      - name: Deploy naar Cloud86 via FTP (poging 2)
+        id: deploy2
+        if: steps.deploy1.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: ${{ secrets.FTP_PATH }}
+          dangerous-clean-slate: false
+          timeout: 120000
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+
+      - name: Wacht 180s voor laatste poging
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 180
+
+      - name: Deploy naar Cloud86 via FTP (poging 3)
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: ${{ secrets.FTP_PATH }}
+          dangerous-clean-slate: false
+          timeout: 120000
           exclude: |
             **/.git*
             **/.git*/**
