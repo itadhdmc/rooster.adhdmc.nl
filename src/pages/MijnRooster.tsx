@@ -258,6 +258,7 @@ export default function MijnRooster() {
 
   const approvedAssignments = assignments.filter(a => a.status === 'approved')
   const pendingAssignments = assignments.filter(a => a.status === 'pending')
+  const reserveAssignments = assignments.filter(a => a.status === 'reserve')
   const totalHours = approvedAssignments.reduce((sum, a) => sum + Number(a.shift.duration_hours), 0)
   const syncedCount = approvedAssignments.filter(a => a.google_calendar_event_id).length
   const [year, month] = selectedMonth.split('-').map(Number)
@@ -402,6 +403,38 @@ export default function MijnRooster() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Reservelijst */}
+      {reserveAssignments.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-sky-50/60">
+            <p className="text-xs font-semibold text-sky-600 uppercase tracking-widest">Op de reservelijst</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {reserveAssignments.map(a => (
+              <div key={a.shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-sky-100 text-sky-700 text-xs font-bold">
+                    {new Date(a.shift.shift_date).getDate()}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-dark capitalize text-sm">{formatDate(a.shift.shift_date)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} · {a.shift.duration_hours}u
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-700">
+                  Reserve
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">
+            Je staat achter de hand voor deze dienst{reserveAssignments.length !== 1 ? 'en' : ''}. Komt er een plek vrij, dan benaderen we je.
+          </p>
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { Notification } from '../types'
 const TYPE_ICON: Record<string, { bg: string; dot: string }> = {
   shift_approved:  { bg: 'bg-emerald-50', dot: 'bg-emerald-400' },
   shift_rejected:  { bg: 'bg-rose-50',    dot: 'bg-rose-400' },
+  shift_reserve:   { bg: 'bg-sky-50',     dot: 'bg-sky-400' },
   admin_pending:   { bg: 'bg-amber-50',   dot: 'bg-amber-400' },
   spot_available:  { bg: 'bg-indigo-50',  dot: 'bg-indigo-400' },
   swap_request:    { bg: 'bg-orange-50',  dot: 'bg-orange-400' },

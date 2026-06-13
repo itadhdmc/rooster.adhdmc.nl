@@ -73,6 +73,19 @@ export default function RoosterBeheer() {
     setProcessing(null)
   }
 
+  // Op de reservelijst zetten (telt niet mee voor de bezetting). Promoveren
+  // gaat later via approveAssignment — dan gelden de maandlimiet + mail vanzelf.
+  async function reserveAssignment(assignmentId: string) {
+    setProcessing(assignmentId)
+    const { error } = await supabase
+      .from('assignments')
+      .update({ status: 'reserve' })
+      .eq('id', assignmentId)
+    if (error) alert('Op reservelijst zetten mislukt: ' + error.message)
+    await loadAll()
+    setProcessing(null)
+  }
+
   async function removeAssignment(assignmentId: string) {
     setProcessing(assignmentId)
     await supabase.from('assignments').delete().eq('id', assignmentId)
@@ -213,6 +226,19 @@ export default function RoosterBeheer() {
       status: 'approved',
     })
     if (error) alert('Fout: ' + error.message)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  // Een (nog niet aangemelde) medewerker direct op de reservelijst zetten.
+  async function directReserve(shiftId: string, userId: string) {
+    setProcessing(shiftId + userId)
+    const { error } = await supabase.from('assignments').insert({
+      shift_id: shiftId,
+      user_id: userId,
+      status: 'reserve',
+    })
+    if (error) alert('Op reservelijst zetten mislukt: ' + error.message)
     await loadAll()
     setProcessing(null)
   }
@@ -455,6 +481,7 @@ export default function RoosterBeheer() {
               {selectedDayShifts.map(shift => {
                 const pending = (shift.assigned_students || []).filter(a => a.status === 'pending')
                 const approved = (shift.assigned_students || []).filter(a => a.status === 'approved')
+                const reserve = (shift.assigned_students || []).filter(a => a.status === 'reserve')
                 const isFull = shift.open_spots <= 0
                 const isOchtend = shift.shift_type === 'ochtend'
                 const unassigned = unassignedStudents(shift)
@@ -574,6 +601,15 @@ export default function RoosterBeheer() {
                                 >
                                   <CheckMiniIcon className="w-3.5 h-3.5" />
                                   {processing === s.assignment_id ? '...' : 'Goedkeuren'}
+                                </button>
+                                <button
+                                  onClick={() => reserveAssignment(s.assignment_id)}
+                                  disabled={processing === s.assignment_id}
+                                  title="Op de reservelijst voor deze dienst zetten"
+                                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100 transition-colors disabled:opacity-50"
+                                >
+                                  <BookmarkMiniIcon className="w-3.5 h-3.5" />
+                                  Reserve
                                 </button>
                                 <button
                                   onClick={() => rejectAssignment(s.assignment_id)}
@@ -703,6 +739,45 @@ export default function RoosterBeheer() {
                       </div>
                     )}
 
+                    {/* Reservelijst voor deze dienst */}
+                    {reserve.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-semibold text-sky-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                          <BookmarkMiniIcon className="w-3.5 h-3.5" />
+                          Reservelijst ({reserve.length})
+                        </p>
+                        <div className="space-y-2">
+                          {reserve.map(s => (
+                            <div key={s.user_id} className="flex items-center justify-between bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0" />
+                                <span className="text-sm font-semibold text-dark truncate">{s.full_name || s.email}</span>
+                              </div>
+                              <div className="flex gap-2 flex-shrink-0">
+                                <button
+                                  onClick={() => approveAssignment(s.assignment_id)}
+                                  disabled={processing === s.assignment_id}
+                                  title="Vanaf de reservelijst inroosteren"
+                                  className="flex items-center gap-1.5 text-xs font-semibold text-white px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50 shadow-sm"
+                                >
+                                  <CheckMiniIcon className="w-3.5 h-3.5" />
+                                  {processing === s.assignment_id ? '...' : 'Inroosteren'}
+                                </button>
+                                <button
+                                  onClick={() => removeAssignment(s.assignment_id)}
+                                  disabled={processing === s.assignment_id}
+                                  title="Van de reservelijst halen"
+                                  className="p-2 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                >
+                                  <TrashIcon className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Direct inroosteren (als er nog plek is) */}
                     {!isFull && unassigned.length > 0 && (
                       <div>
@@ -723,7 +798,26 @@ export default function RoosterBeheer() {
                       </div>
                     )}
 
-                    {isFull && pending.length === 0 && (
+                    {/* Medewerker op de reservelijst zetten (ook als de dienst vol is) */}
+                    {unassigned.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-bold text-sky-500 mb-2">Op reservelijst zetten</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {unassigned.map(student => (
+                            <button
+                              key={student.id}
+                              onClick={() => directReserve(shift.id, student.id)}
+                              disabled={processing === shift.id + student.id}
+                              className="text-xs px-2.5 py-1.5 rounded-xl border border-sky-200 bg-sky-50 text-sky-600 font-semibold hover:bg-sky-100 transition-colors disabled:opacity-50"
+                            >
+                              + {student.full_name || student.email.split('@')[0]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {isFull && pending.length === 0 && reserve.length === 0 && (
                       <p className="text-xs font-semibold text-emerald-600">Dienst is vol</p>
                     )}
                   </div>
@@ -859,6 +953,7 @@ function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: strin
 
   const pct = shift.max_students > 0 ? shift.assigned_count / shift.max_students : 0
   const pendingCount = (shift.assigned_students || []).filter(a => a.status === 'pending').length
+  const reserveCount = (shift.assigned_students || []).filter(a => a.status === 'reserve').length
 
   const bg = pct >= 1 ? '#d1fae5' : pct > 0 ? '#fef9c3' : '#fee2e2'
   const textColor = pct >= 1 ? '#065f46' : pct > 0 ? '#92400e' : '#9f1239'
@@ -873,6 +968,11 @@ function ShiftBar({ shift, label }: { shift?: ShiftWithAssignments; label: strin
         {pendingCount > 0 && (
           <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1 rounded-sm leading-tight">
             +{pendingCount}
+          </span>
+        )}
+        {reserveCount > 0 && (
+          <span className="text-[9px] font-bold text-sky-600 bg-sky-100 px-1 rounded-sm leading-tight" title="Op de reservelijst">
+            R{reserveCount}
           </span>
         )}
       </div>
@@ -908,6 +1008,14 @@ function XMiniIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
+function BookmarkMiniIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
     </svg>
   )
 }

@@ -1,6 +1,6 @@
 export type Role = 'student' | 'admin'
 export type ShiftType = 'ochtend' | 'middag'
-export type AssignmentStatus = 'pending' | 'approved'
+export type AssignmentStatus = 'pending' | 'approved' | 'reserve'
 export type Attendance = 'gewerkt' | 'ziek' | 'afwezig'
 
 export interface Profile {
@@ -109,6 +109,7 @@ export interface SwappableAssignment {
 export type NotificationType =
   | 'shift_approved'
   | 'shift_rejected'
+  | 'shift_reserve'
   | 'admin_pending'
   | 'spot_available'
   | 'swap_request'
