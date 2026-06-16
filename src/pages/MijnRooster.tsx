@@ -4,8 +4,8 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getGoogleToken } from '../lib/auth'
 import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
-import { Shift, Assignment, SwappableAssignment } from '../types'
-import { formatDate, monthLabel } from '../utils/dates'
+import { Shift, Assignment, SwappableAssignment, ShiftType } from '../types'
+import { formatDate, monthLabel, getWeeksInMonth, dateToISO } from '../utils/dates'
 import { effectiveShift } from '../utils/shiftTimes'
 
 interface AssignmentWithShift extends Assignment {
@@ -35,6 +35,7 @@ export default function MijnRooster() {
   const [colleagues, setColleagues] = useState<Record<string, string[]>>({})
   const [loadingSwappable, setLoadingSwappable] = useState(false)
   const [swapSuccess, setSwapSuccess] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   useEffect(() => {
     getGoogleToken().then(token => {
@@ -50,6 +51,7 @@ export default function MijnRooster() {
   useEffect(() => {
     if (!profile) return
     setAutoSynced(false)
+    setSelectedDate(null)
     loadAssignments()
   }, [profile, selectedMonth])
 
@@ -258,10 +260,24 @@ export default function MijnRooster() {
 
   const approvedAssignments = assignments.filter(a => a.status === 'approved')
   const pendingAssignments = assignments.filter(a => a.status === 'pending')
-  const reserveAssignments = assignments.filter(a => a.status === 'reserve')
   const totalHours = approvedAssignments.reduce((sum, a) => sum + Number(a.shift.duration_hours), 0)
   const syncedCount = approvedAssignments.filter(a => a.google_calendar_event_id).length
   const [year, month] = selectedMonth.split('-').map(Number)
+  const weeks = getWeeksInMonth(year, month)
+
+  // Mijn toewijzingen per dag (ochtend/middag) voor de kalender.
+  const byDate = assignments.reduce<Record<string, Partial<Record<ShiftType, AssignmentWithShift>>>>((acc, a) => {
+    const iso = a.shift.shift_date
+    if (!acc[iso]) acc[iso] = {}
+    acc[iso][a.shift.shift_type] = a
+    return acc
+  }, {})
+
+  const selectedDayAssignments = selectedDate
+    ? assignments
+        .filter(a => a.shift.shift_date === selectedDate)
+        .sort((a, b) => a.shift.shift_type.localeCompare(b.shift.shift_type))
+    : []
 
   function generateMonthOptions() {
     const now = new Date()
@@ -377,67 +393,6 @@ export default function MijnRooster() {
         </div>
       </div>
 
-      {/* Pending aanvragen */}
-      {pendingAssignments.length > 0 && (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Wacht op goedkeuring</p>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {pendingAssignments.map(a => (
-              <div key={a.shift.id} className="px-5 py-4 flex items-center justify-between gap-3 opacity-70">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-700 text-xs font-bold">
-                    {new Date(a.shift.shift_date).getDate()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-dark capitalize text-sm">{formatDate(a.shift.shift_date)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} · {a.shift.duration_hours}u
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
-                  ⏳ Aangevraagd
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Reservelijst */}
-      {reserveAssignments.length > 0 && (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-sky-50/60">
-            <p className="text-xs font-semibold text-sky-600 uppercase tracking-widest">Op de reservelijst</p>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {reserveAssignments.map(a => (
-              <div key={a.shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-sky-100 text-sky-700 text-xs font-bold">
-                    {new Date(a.shift.shift_date).getDate()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-dark capitalize text-sm">{formatDate(a.shift.shift_date)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} · {a.shift.duration_hours}u
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-700">
-                  Reserve
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">
-            Je staat achter de hand voor deze dienst{reserveAssignments.length !== 1 ? 'en' : ''}. Komt er een plek vrij, dan benaderen we je.
-          </p>
-        </div>
-      )}
-
       {/* Sync bar */}
       {approvedAssignments.length > 0 && (
         <div className="card p-4 flex items-center justify-between gap-3">
@@ -471,87 +426,154 @@ export default function MijnRooster() {
         </div>
       )}
 
-      {/* Shifts list */}
+      {/* Maandkalender */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
         </div>
-      ) : approvedAssignments.length === 0 ? (
+      ) : assignments.length === 0 ? (
         <div className="card p-16 text-center">
           <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          <p className="text-gray-500 font-semibold">Geen goedgekeurde diensten in {monthLabel(year, month)}</p>
-          <p className="text-gray-400 text-sm mt-1">
-            {pendingAssignments.length > 0 ? 'Je hebt diensten aangevraagd die nog goedgekeurd worden.' : 'Je bent nog niet ingeroosterd voor deze maand.'}
-          </p>
+          <p className="text-gray-500 font-semibold">Geen diensten in {monthLabel(year, month)}</p>
+          <p className="text-gray-400 text-sm mt-1">Je bent nog niet ingeroosterd voor deze maand.</p>
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <div className="divide-y divide-gray-50">
-            {approvedAssignments.map(a => (
-              <div key={a.shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-4">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
-                    style={{ backgroundColor: a.shift.shift_type === 'ochtend' ? '#f87369' : '#3c3c3b' }}
-                  >
-                    {new Date(a.shift.shift_date).getDate()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-dark capitalize text-sm">{formatDate(a.shift.shift_date)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} · {a.shift.duration_hours}u
-                    </p>
-                    {(colleagues[a.shift_id] || []).length > 0 && (
-                      <p className="text-xs text-indigo-400 font-medium mt-0.5">
-                        Samen met {(colleagues[a.shift_id] || []).join(' en ')}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${
-                    a.shift.shift_type === 'ochtend'
-                      ? 'bg-orange-50 text-orange-500'
-                      : 'bg-indigo-50 text-indigo-500'
-                  }`}>
-                    {a.shift.shift_type}
-                  </span>
-                  <button
-                    onClick={() => openSwapModal(a)}
-                    title="Ruilverzoek aanvragen bij een collega"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-colors text-xs font-semibold"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
-                    </svg>
-                    Ruilen
-                  </button>
-                  <button
-                    onClick={() => syncShift(a)}
-                    disabled={syncing[a.shift_id] || !googleToken}
-                    title={a.google_calendar_event_id ? 'Verwijder uit Google Agenda' : 'Voeg toe aan Google Agenda'}
-                    className={`p-2 rounded-xl transition-colors disabled:opacity-40 ${
-                      a.google_calendar_event_id
-                        ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100'
-                        : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
-                    }`}
-                  >
-                    {syncing[a.shift_id] ? (
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <CalendarSyncIcon className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
+        <>
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400">
+            <span className="hidden sm:inline">Klik op een dag voor details</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#fb923c' }} /> Ochtend</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#818cf8' }} /> Middag</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-amber-300 inline-block" /> Aangevraagd</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-sky-300 inline-block" /> Reserve</span>
           </div>
-        </div>
+
+          {/* Calendar grid */}
+          <div className="card overflow-hidden">
+            <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: '#3c3c3b' }}>
+              {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'].map((d, i) => (
+                <div key={d} className={`py-3 text-center ${i < 5 ? 'border-r border-white/10' : ''}`}>
+                  <span className="hidden sm:inline text-xs font-semibold text-white/50 uppercase tracking-widest">{d}</span>
+                  <span className="sm:hidden text-xs font-semibold text-white/50 uppercase tracking-widest">{d.slice(0, 2)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="divide-y divide-gray-100">
+              {weeks.map((week, wi) => (
+                <div key={wi} className="grid grid-cols-6 divide-x divide-gray-100">
+                  {week.map((day, di) => {
+                    if (!day) return <div key={di} className="bg-gray-50/40 min-h-[92px]" />
+                    const iso = dateToISO(day)
+                    const dayMap = byDate[iso] || {}
+                    const morning = dayMap['ochtend']
+                    const afternoon = dayMap['middag']
+                    const isSelected = selectedDate === iso
+                    const isToday = iso === new Date().toISOString().split('T')[0]
+                    const hasShifts = !!(morning || afternoon)
+                    return (
+                      <button
+                        key={iso}
+                        onClick={() => hasShifts && setSelectedDate(isSelected ? null : iso)}
+                        className={`p-2 sm:p-2.5 text-left transition-colors min-h-[92px] w-full ${
+                          isSelected ? 'bg-dark/[0.06] ring-2 ring-inset ring-dark/20' : hasShifts ? 'hover:bg-gray-50' : 'cursor-default'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${isToday ? 'text-white' : 'text-dark'}`}
+                            style={isToday ? { backgroundColor: '#f87369' } : {}}
+                          >
+                            {day.getDate()}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <MyShiftBar assignment={morning} label="AM" />
+                          <MyShiftBar assignment={afternoon} label="PM" />
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Geselecteerde dag */}
+          {selectedDate && selectedDayAssignments.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: '#3c3c3b' }}>
+                <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
+                <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {selectedDayAssignments.map(a => {
+                  const isOchtend = a.shift.shift_type === 'ochtend'
+                  const mates = colleagues[a.shift_id] || []
+                  return (
+                    <div key={a.shift.id} className="px-5 py-4">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${isOchtend ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'}`}>
+                          {isOchtend ? 'Ochtend' : 'Middag'}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} ({a.shift.duration_hours}u)
+                        </span>
+                        <StatusBadge status={a.status} />
+                      </div>
+
+                      {a.status === 'approved' && mates.length > 0 && (
+                        <p className="text-xs text-indigo-400 font-medium mt-2">Samen met {mates.join(' en ')}</p>
+                      )}
+
+                      {a.status === 'approved' && (
+                        <div className="flex items-center gap-2 mt-3">
+                          <button
+                            onClick={() => openSwapModal(a)}
+                            title="Ruilverzoek aanvragen bij een collega"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-colors text-xs font-semibold"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
+                            </svg>
+                            Ruilen
+                          </button>
+                          <button
+                            onClick={() => syncShift(a)}
+                            disabled={syncing[a.shift_id] || !googleToken}
+                            title={a.google_calendar_event_id ? 'Verwijder uit Google Agenda' : 'Voeg toe aan Google Agenda'}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-40 ${
+                              a.google_calendar_event_id
+                                ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100'
+                                : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
+                            }`}
+                          >
+                            {syncing[a.shift_id] ? (
+                              <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <CalendarSyncIcon className="w-3.5 h-3.5" />
+                            )}
+                            {a.google_calendar_event_id ? 'In agenda' : 'In agenda zetten'}
+                          </button>
+                        </div>
+                      )}
+
+                      {a.status === 'pending' && (
+                        <p className="text-xs text-gray-400 mt-2">Wacht nog op goedkeuring door de beheerder.</p>
+                      )}
+                      {a.status === 'reserve' && (
+                        <p className="text-xs text-gray-400 mt-2">Je staat op de reservelijst. Komt er een plek vrij, dan benaderen we je.</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
       )}
       {/* Swap modal */}
       {swapModal && (
@@ -611,6 +633,48 @@ export default function MijnRooster() {
       )}
     </div>
   )
+}
+
+// Eén dienstbalk in een kalenderdag: leeg/gedempt als de student die
+// dagdienst niet heeft, anders gekleurd op status (en type bij ingeroosterd).
+function MyShiftBar({ assignment, label }: { assignment?: AssignmentWithShift; label: string }) {
+  if (!assignment) {
+    return (
+      <div className="h-5 rounded-md bg-gray-100/60 flex items-center px-1.5">
+        <span className="text-[9px] text-gray-300 font-semibold">{label}</span>
+      </div>
+    )
+  }
+
+  const s = assignment.status
+  const isOchtend = assignment.shift.shift_type === 'ochtend'
+  const { bg, text } =
+    s === 'pending' ? { bg: '#fef3c7', text: '#b45309' }
+    : s === 'reserve' ? { bg: '#e0f2fe', text: '#0369a1' }
+    : isOchtend ? { bg: '#ffedd5', text: '#c2410c' }
+    : { bg: '#e0e7ff', text: '#4338ca' }
+  const synced = s === 'approved' && !!assignment.google_calendar_event_id
+
+  return (
+    <div className="h-5 rounded-md flex items-center justify-between px-1.5 gap-1" style={{ backgroundColor: bg }}>
+      <span className="text-[9px] font-bold leading-none" style={{ color: text }}>
+        {label} {assignment.shift.start_time.slice(0, 5)}
+      </span>
+      <span className="text-[9px] font-bold leading-none flex-shrink-0" style={{ color: text }}>
+        {s === 'pending' ? '⏳' : s === 'reserve' ? 'R' : synced ? '✓' : ''}
+      </span>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { cls: string; label: string }> = {
+    approved: { cls: 'bg-emerald-50 text-emerald-600', label: 'Ingeroosterd' },
+    pending:  { cls: 'bg-amber-100 text-amber-700',     label: 'Aangevraagd' },
+    reserve:  { cls: 'bg-sky-100 text-sky-700',         label: 'Reserve' },
+  }
+  const { cls, label } = map[status] ?? map.approved
+  return <span className={`ml-auto text-xs font-semibold px-2.5 py-1 rounded-full ${cls}`}>{label}</span>
 }
 
 function CalendarSyncIcon({ className }: { className?: string }) {
