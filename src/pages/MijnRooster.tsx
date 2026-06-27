@@ -395,7 +395,7 @@ export default function MijnRooster() {
 
       {/* Sync bar */}
       {approvedAssignments.length > 0 && (
-        <div className="card p-4 flex items-center justify-between gap-3">
+        <div className="card p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-dark">Google Agenda synchroniseren</p>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -409,14 +409,14 @@ export default function MijnRooster() {
               onClick={repairSync}
               disabled={!googleToken || repairing || autoSyncing}
               title="Verwijder dubbele afspraken en zet elke dienst één keer in je agenda"
-              className="text-sm font-medium px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
+              className="flex-1 sm:flex-none text-sm font-medium px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
             >
               {repairing ? 'Opruimen...' : 'Dubbele opruimen'}
             </button>
             <button
               onClick={syncAll}
               disabled={!googleToken || syncedCount === approvedAssignments.length || autoSyncing || repairing}
-              className="flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#3c3c3b' }}
             >
               <CalendarSyncIcon className="w-4 h-4" />
@@ -466,7 +466,7 @@ export default function MijnRooster() {
               {weeks.map((week, wi) => (
                 <div key={wi} className="grid grid-cols-6 divide-x divide-gray-100">
                   {week.map((day, di) => {
-                    if (!day) return <div key={di} className="bg-gray-50/40 min-h-[92px]" />
+                    if (!day) return <div key={di} className="bg-gray-50/40 min-h-[72px] sm:min-h-[92px]" />
                     const iso = dateToISO(day)
                     const dayMap = byDate[iso] || {}
                     const morning = dayMap['ochtend']
@@ -478,13 +478,13 @@ export default function MijnRooster() {
                       <button
                         key={iso}
                         onClick={() => hasShifts && setSelectedDate(isSelected ? null : iso)}
-                        className={`p-2 sm:p-2.5 text-left transition-colors min-h-[92px] w-full ${
+                        className={`p-1.5 sm:p-2.5 text-left transition-colors min-h-[72px] sm:min-h-[92px] w-full ${
                           isSelected ? 'bg-dark/[0.06] ring-2 ring-inset ring-dark/20' : hasShifts ? 'hover:bg-gray-50' : 'cursor-default'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-1.5 sm:mb-2">
                           <div
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${isToday ? 'text-white' : 'text-dark'}`}
+                            className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center text-xs font-bold ${isToday ? 'text-white' : 'text-dark'}`}
                             style={isToday ? { backgroundColor: '#f87369' } : {}}
                           >
                             {day.getDate()}
@@ -656,9 +656,9 @@ function MyShiftBar({ assignment, label }: { assignment?: AssignmentWithShift; l
   const synced = s === 'approved' && !!assignment.google_calendar_event_id
 
   return (
-    <div className="h-5 rounded-md flex items-center justify-between px-1.5 gap-1" style={{ backgroundColor: bg }}>
-      <span className="text-[9px] font-bold leading-none" style={{ color: text }}>
-        {label} {assignment.shift.start_time.slice(0, 5)}
+    <div className="h-5 rounded-md flex items-center justify-between px-1.5 gap-0.5" style={{ backgroundColor: bg }}>
+      <span className="text-[9px] font-bold leading-none truncate" style={{ color: text }}>
+        {label}<span className="hidden sm:inline"> {assignment.shift.start_time.slice(0, 5)}</span>
       </span>
       <span className="text-[9px] font-bold leading-none flex-shrink-0" style={{ color: text }}>
         {s === 'pending' ? '⏳' : s === 'reserve' ? 'R' : synced ? '✓' : ''}
