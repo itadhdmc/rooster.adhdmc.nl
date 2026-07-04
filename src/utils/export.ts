@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { RosterPeriod } from '../types'
+import { Profile, RosterPeriod } from '../types'
 import { monthLabel, MONTHS_NL } from './dates'
 import { hoursBetween } from './shiftTimes'
 
@@ -9,6 +9,15 @@ interface ExportRow {
   start_time: string
   end_time: string
   duration_hours: number
+}
+
+// Assignment-rij zoals de export-query die teruggeeft (met geneste dienst).
+interface AssignmentExportRow {
+  user_id: string
+  attendance: string | null
+  custom_start_time: string | null
+  custom_end_time: string | null
+  shifts: ExportRow
 }
 
 interface StudentTotals {
@@ -66,18 +75,21 @@ export async function exportPeriodHours(period: RosterPeriod): Promise<{ ok: boo
   if (error) return { ok: false, message: error.message }
   if (!data || data.length === 0) return { ok: false, message: 'Geen goedgekeurde diensten in deze periode.' }
 
-  const userIds = [...new Set(data.map((r: any) => r.user_id))]
+  const exportRows = data as AssignmentExportRow[]
+  const userIds = [...new Set(exportRows.map(r => r.user_id))]
   const { data: profiles } = await supabase
     .from('profiles')
     .select('id, full_name, email')
     .in('id', userIds)
 
-  const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]))
+  const profileMap = new Map(
+    ((profiles || []) as Pick<Profile, 'id' | 'full_name' | 'email'>[]).map(p => [p.id, p])
+  )
 
   // Aggregeren per medewerker.
   const totals = new Map<string, StudentTotals>()
-  for (const row of data as any[]) {
-    const shift = row.shifts as ExportRow
+  for (const row of exportRows) {
+    const shift = row.shifts
     const prof = profileMap.get(row.user_id)
     let t = totals.get(row.user_id)
     if (!t) {

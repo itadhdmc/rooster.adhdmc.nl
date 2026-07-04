@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-import { RosterPeriod, Shift, Assignment } from '../types'
+import { RosterPeriod, Shift, Assignment, AssignmentWithShiftJoin } from '../types'
 import { monthLabel, formatDate } from '../utils/dates'
 import { effectiveShift } from '../utils/shiftTimes'
 
@@ -32,15 +32,16 @@ export default function Dashboard() {
       const year = now.getFullYear()
       const month = now.getMonth() + 1
 
-      const [{ data: periods }, { data: assignments }] = await Promise.all([
+      const [{ data: periods }, { data: assignmentRows }] = await Promise.all([
         supabase.from('roster_periods').select('*').eq('year', year).order('month'),
         supabase.from('assignments').select('*, shifts(*)').eq('user_id', profile!.id),
       ])
+      const assignments = (assignmentRows || []) as AssignmentWithShiftJoin[]
 
       const openPeriod = periods?.find(p => p.availability_open || p.second_round_open)
       setActivePeriod(openPeriod || periods?.[0] || null)
 
-      if (assignments && assignments.length > 0) {
+      if (assignments.length > 0) {
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const weekEnd = new Date(today)
@@ -52,13 +53,10 @@ export default function Dashboard() {
 
         // Upcoming = goedgekeurde toekomstige diensten
         const upcoming = assignments
-          .filter(a => {
-            const shift = (a as any).shifts as Shift
-            return shift && new Date(shift.shift_date) >= today && a.status === 'approved'
-          })
-          .sort((a, b) => (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date))
+          .filter(a => a.shifts && new Date(a.shifts.shift_date) >= today && a.status === 'approved')
+          .sort((a, b) => a.shifts!.shift_date.localeCompare(b.shifts!.shift_date))
           .slice(0, 5)
-          .map(a => ({ shift: effectiveShift((a as any).shifts as Shift, a), assigned_at: a.assigned_at }))
+          .map(a => ({ shift: effectiveShift(a.shifts!, a), assigned_at: a.assigned_at }))
 
         setUpcomingShifts(upcoming)
 
@@ -66,7 +64,7 @@ export default function Dashboard() {
         let wh = 0, mh = 0
         for (const a of assignments) {
           if (a.status !== 'approved') continue
-          const raw = (a as any).shifts as Shift
+          const raw = a.shifts
           if (!raw) continue
           const shift = effectiveShift(raw, a)
           const d = new Date(shift.shift_date)

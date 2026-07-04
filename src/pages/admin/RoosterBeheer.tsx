@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
+import { Assignment, ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
 import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday, isSingleStudentDay } from '../../utils/dates'
 import { hoursBetween } from '../../utils/shiftTimes'
 
@@ -41,11 +41,11 @@ export default function RoosterBeheer() {
       supabase.from('assignments').select('*, shifts!inner(period_id)').eq('shifts.period_id', periodId),
     ])
     const metaMap: Record<string, AssignmentMeta> = {}
-    for (const a of att || []) {
-      metaMap[(a as any).id] = {
-        attendance: (a as any).attendance,
-        custom_start_time: (a as any).custom_start_time ?? null,
-        custom_end_time: (a as any).custom_end_time ?? null,
+    for (const a of (att || []) as Assignment[]) {
+      metaMap[a.id] = {
+        attendance: a.attendance,
+        custom_start_time: a.custom_start_time ?? null,
+        custom_end_time: a.custom_end_time ?? null,
       }
     }
     setMeta(metaMap)

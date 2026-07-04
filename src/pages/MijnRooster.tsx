@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getGoogleToken } from '../lib/auth'
 import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
-import { Shift, Assignment, SwappableAssignment, ShiftType } from '../types'
+import { Shift, Assignment, AssignmentWithShiftJoin, SwappableAssignment, ShiftType, ShiftWithAssignments } from '../types'
 import { formatDate, monthLabel, getWeeksInMonth, dateToISO } from '../utils/dates'
 import { effectiveShift } from '../utils/shiftTimes'
 
@@ -88,9 +88,9 @@ export default function MijnRooster() {
       .eq('user_id', profile!.id)
       .eq('status', 'approved')
 
-    const items = (data || [])
-      .filter(a => (a as any).shifts)
-      .map(a => ({ id: a.id, shift: effectiveShift((a as any).shifts as Shift, a) }))
+    const items = ((data || []) as AssignmentWithShiftJoin[])
+      .filter(a => a.shifts)
+      .map(a => ({ id: a.id, shift: effectiveShift(a.shifts!, a) }))
       .filter(it => it.shift.shift_date >= monthStart)
     if (items.length === 0) return
 
@@ -138,19 +138,19 @@ export default function MijnRooster() {
       .select('*, shifts(*)')
       .eq('user_id', profile!.id)
 
-    const enriched = (data || [])
+    const enriched = ((data || []) as AssignmentWithShiftJoin[])
       .filter(a => {
-        const shift = (a as any).shifts as Shift
+        const shift = a.shifts
         if (!shift) return false
         return shift.shift_date >= start && shift.shift_date <= end
       })
       .sort((a, b) => {
         if (a.status !== b.status) return a.status === 'approved' ? -1 : 1
-        return (a as any).shifts.shift_date.localeCompare((b as any).shifts.shift_date)
+        return a.shifts!.shift_date.localeCompare(b.shifts!.shift_date)
       })
       // Afwijkende werktijden (door de admin ingesteld) gaan vóór de
       // standaardtijden — ook in de agenda-sync en urentelling.
-      .map(a => ({ ...a, shift: effectiveShift((a as any).shifts as Shift, a) }))
+      .map(a => ({ ...a, shift: effectiveShift(a.shifts!, a) }))
 
     setAssignments(enriched)
     setLoading(false)
@@ -166,10 +166,10 @@ export default function MijnRooster() {
       .select('id, assigned_students')
       .in('id', shiftIds)
     const map: Record<string, string[]> = {}
-    for (const row of data || []) {
-      map[(row as any).id] = ((row as any).assigned_students || [])
-        .filter((s: any) => s.status === 'approved' && s.user_id !== profile!.id)
-        .map((s: any) => (s.full_name || s.email).split(' ')[0])
+    for (const row of (data || []) as Pick<ShiftWithAssignments, 'id' | 'assigned_students'>[]) {
+      map[row.id] = (row.assigned_students || [])
+        .filter(s => s.status === 'approved' && s.user_id !== profile!.id)
+        .map(s => (s.full_name || s.email).split(' ')[0])
     }
     setColleagues(map)
   }

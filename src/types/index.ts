@@ -75,6 +75,11 @@ export interface Assignment {
   custom_end_time: string | null
 }
 
+// Assignment-rij zoals Supabase die teruggeeft bij select('*, shifts(*)').
+export interface AssignmentWithShiftJoin extends Assignment {
+  shifts: Shift | null
+}
+
 export type SwapStatus = 'pending' | 'employee_approved' | 'admin_approved' | 'rejected'
 
 export interface SwapDetail {
