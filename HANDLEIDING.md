@@ -146,6 +146,7 @@ hiervan een melding in je **Inbox** (A7). Goedgekeurde diensten verschijnen in
 | 🟢 groen **"Aanmelden"** | Plek vrij | Klik om je aan te melden |
 | 🟠 amber **"Afmelden"** | Je bent aangemeld, wacht op goedkeuring | Klik om je weer af te melden |
 | 🔵 blauw **"Ingepland"** | Goedgekeurd — je bent ingeroosterd | Niets nodig (ruilen kan via A6) |
+| 💠 lichtblauw **"Reserve"** | Je staat op de reservelijst | Afmelden kan tot 24 uur voor de dienst |
 | grijs **"vol"** | Alle plekken bezet | Kies een andere dienst |
 | **—** | Geen dienst die dag | — |
 
@@ -156,6 +157,11 @@ hiervan een melding in je **Inbox** (A7). Goedgekeurde diensten verschijnen in
 - 1️⃣ **Zaterdagdiensten** hebben altijd maar **1 plek** — wie het eerst komt.
 - 🔁 Verdwenen plek? Iemand anders was je net voor. Kies een andere dienst.
 - 📅 Diensten in het **verleden** kun je niet meer kiezen (die staan op "—").
+- 💠 **Reservelijst:** de beheerder kan je op de reservelijst zetten. Komt er
+  een plek vrij en word je ingepland, dan krijg je daarvan een melding én een
+  e-mail. Wil je niet langer reserve staan? Meld je dan af via de knop
+  **Afmelden** (kan hier én via Mijn rooster, tot **24 uur** voor de start van
+  de dienst — daarna alleen via de beheerder).
 
 ---
 
@@ -292,6 +298,17 @@ Snelste manier voor veel aanvragen tegelijk:
 > ⚠️ Komt een medewerker met een goedkeuring boven zijn **maandlimiet** uit, dan
 > wordt die goedkeuring **geweigerd** met de melding *"Maandlimiet
 > overschreden"*. Zie [B6](#b6-de-urenlimiet-1664-uur-per-maand).
+
+**Reservelijst:** naast goedkeuren/afwijzen kun je een aanvrager op de
+**reservelijst** zetten (of iemand er direct op plaatsen, ook als de dienst vol
+is). Goed om te weten:
+
+- Plaats je een reserve via **Inroosteren** op de dienst, dan krijgt die
+  persoon een melding én e-mail *"Ingepland vanaf de reservelijst"*.
+- Verwijder je iemand van de reservelijst zonder in te plannen, dan krijgt die
+  persoon daarvan een nette melding.
+- Medewerkers kunnen zichzelf tot **24 uur** voor de dienst van de reservelijst
+  afmelden; jij krijgt daarvan dan een melding in je inbox.
 
 ---
 

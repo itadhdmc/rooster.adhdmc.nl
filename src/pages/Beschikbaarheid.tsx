@@ -18,6 +18,12 @@ function getWeekDays(weekOffset: number): Date[] {
   })
 }
 
+// Afmelden van de reservelijst kan tot 24 uur voor de start van de dienst
+// (dezelfde grens wordt server-side afgedwongen via RLS).
+function canLeaveReserve(shift: Pick<ShiftWithAssignments, 'shift_date' | 'start_time'>): boolean {
+  return new Date(`${shift.shift_date}T${shift.start_time}`).getTime() - Date.now() > 24 * 60 * 60 * 1000
+}
+
 // Hoeveel weken (t.o.v. deze week) moet je vooruit/terug om bij de eerste
 // week van een gekozen maand uit te komen.
 function getWeekOffsetForMonth(year: number, month: number): number {
@@ -138,6 +144,8 @@ export default function Beschikbaarheid() {
     a.status === 'pending' && shifts.some(s => s.id === a.shift_id)).length
   const myApprovedCount = myAssignments.filter(a =>
     a.status === 'approved' && shifts.some(s => s.id === a.shift_id)).length
+  const myReserveCount = myAssignments.filter(a =>
+    a.status === 'reserve' && shifts.some(s => s.id === a.shift_id)).length
 
   const weekLabel = `${weekDays[0].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${weekDays[5].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`
 
@@ -200,8 +208,8 @@ export default function Beschikbaarheid() {
       )}
 
       {/* Stats */}
-      {(myPendingCount > 0 || myApprovedCount > 0) && (
-        <div className="grid grid-cols-2 gap-3">
+      {(myPendingCount > 0 || myApprovedCount > 0 || myReserveCount > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {myPendingCount > 0 && (
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -218,6 +226,15 @@ export default function Beschikbaarheid() {
                 <p className="text-xl font-bold text-dark">{myApprovedCount}</p>
               </div>
               <p className="text-xs text-gray-400">Goedgekeurd</p>
+            </div>
+          )}
+          {myReserveCount > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-sky-400" />
+                <p className="text-xl font-bold text-dark">{myReserveCount}</p>
+              </div>
+              <p className="text-xs text-gray-400">Reservelijst</p>
             </div>
           )}
         </div>
@@ -296,6 +313,7 @@ export default function Beschikbaarheid() {
 
               const isPending = myAssignment?.status === 'pending'
               const isApproved = myAssignment?.status === 'approved'
+              const isReserve = myAssignment?.status === 'reserve'
               const isFull = shift.open_spots <= 0 && !myAssignment
 
               // Collega's die op deze dienst zijn ingeroosterd (goedgekeurd),
@@ -310,7 +328,7 @@ export default function Beschikbaarheid() {
                     <p className="text-[10px] text-gray-400 font-semibold leading-none">
                       {shift.start_time.slice(0, 5)}
                     </p>
-                    {signupOpen && !isApproved && !isPending && !isFull && !isPast && (
+                    {signupOpen && !isApproved && !isPending && !isReserve && !isFull && !isPast && (
                       <p className="text-[9px] text-gray-300 mt-0.5 leading-none">
                         {shift.open_spots} plek{shift.open_spots !== 1 ? 'ken' : ''}
                       </p>
@@ -334,6 +352,7 @@ export default function Beschikbaarheid() {
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                       isApproved ? 'bg-indigo-300' :
                       isPending  ? 'bg-amber-300' :
+                      isReserve  ? 'bg-sky-300' :
                       isFull || isPast ? 'bg-gray-200' :
                       'bg-emerald-400'
                     }`} />
@@ -353,6 +372,25 @@ export default function Beschikbaarheid() {
                     >
                       {processing === myAssignment.id ? '...' : 'Afmelden'}
                     </button>
+                  )}
+                  {isReserve && myAssignment && (
+                    <div className="flex flex-col items-center gap-1 w-full">
+                      <span
+                        className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded-lg w-full text-center leading-none"
+                        title={canLeaveReserve(shift) ? undefined : 'Afmelden kan tot 24 uur voor de start van de dienst'}
+                      >
+                        Reserve
+                      </span>
+                      {canLeaveReserve(shift) && !isPast && (
+                        <button
+                          onClick={() => confirm('Wil je jezelf van de reservelijst voor deze dienst afmelden?') && withdraw(myAssignment.id)}
+                          disabled={processing === myAssignment.id}
+                          className="text-[10px] font-semibold text-gray-400 hover:text-sky-600 underline underline-offset-2 transition-colors disabled:opacity-50 leading-none"
+                        >
+                          {processing === myAssignment.id ? '...' : 'Afmelden'}
+                        </button>
+                      )}
+                    </div>
                   )}
                   {signupOpen && !myAssignment && !isFull && !isPast && (
                     <button
@@ -397,6 +435,9 @@ export default function Beschikbaarheid() {
         </span>
         <span className="flex items-center gap-1.5 text-gray-400">
           <span className="w-2 h-2 rounded-full bg-indigo-300 inline-block" /> Ingeroosterd
+        </span>
+        <span className="flex items-center gap-1.5 text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-sky-300 inline-block" /> Reservelijst
         </span>
         <span className="flex items-center gap-1.5 text-gray-400">
           <span className="text-[9px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full leading-none">Naam</span>

@@ -120,6 +120,8 @@ export type NotificationType =
   | 'swap_request'
   | 'swap_approved'
   | 'swap_rejected'
+  | 'reserve_withdrawn'
+  | 'reserve_removed'
 
 export interface Notification {
   id: string

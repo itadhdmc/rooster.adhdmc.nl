@@ -12,6 +12,12 @@ interface AssignmentWithShift extends Assignment {
   shift: Shift
 }
 
+// Afmelden van de reservelijst kan tot 24 uur voor de start van de dienst
+// (dezelfde grens wordt server-side afgedwongen via RLS).
+function canLeaveReserve(shift: Shift): boolean {
+  return new Date(`${shift.shift_date}T${shift.start_time}`).getTime() - Date.now() > 24 * 60 * 60 * 1000
+}
+
 export default function MijnRooster() {
   const { profile } = useAuth()
   const [assignments, setAssignments] = useState<AssignmentWithShift[]>([])
@@ -202,6 +208,13 @@ export default function MijnRooster() {
     }
 
     setSyncing(prev => ({ ...prev, [assignment.shift_id]: false }))
+  }
+
+  async function leaveReserve(a: AssignmentWithShift) {
+    if (!confirm(`Wil je jezelf van de reservelijst voor ${formatDate(a.shift.shift_date)} (${a.shift.shift_type}) afmelden?`)) return
+    const { error } = await supabase.from('assignments').delete().eq('id', a.id)
+    if (error) { alert('Afmelden mislukt: ' + error.message); return }
+    await loadAssignments()
   }
 
   async function loadIncomingSwapCount() {
@@ -565,7 +578,19 @@ export default function MijnRooster() {
                         <p className="text-xs text-gray-400 mt-2">Wacht nog op goedkeuring door de beheerder.</p>
                       )}
                       {a.status === 'reserve' && (
-                        <p className="text-xs text-gray-400 mt-2">Je staat op de reservelijst. Komt er een plek vrij, dan benaderen we je.</p>
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-400">Je staat op de reservelijst. Komt er een plek vrij, dan benaderen we je.</p>
+                          {canLeaveReserve(a.shift) ? (
+                            <button
+                              onClick={() => leaveReserve(a)}
+                              className="mt-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sky-600 bg-sky-50 hover:bg-sky-100 transition-colors text-xs font-semibold"
+                            >
+                              Afmelden van reservelijst
+                            </button>
+                          ) : (
+                            <p className="text-[11px] text-gray-300 mt-1">Afmelden kan tot 24 uur voor de start van de dienst.</p>
+                          )}
+                        </div>
                       )}
                     </div>
                   )
