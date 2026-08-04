@@ -82,12 +82,13 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick links */}
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <QuickLink to="/admin/studenten" title="Medewerkers" desc="Beheer rollen en contracturen" icon={<UsersIcon />} accent="#6366f1" />
         <QuickLink to="/admin/beschikbaarheid" title="Beschikbaarheid" desc="Ingegeven beschikbaarheid" icon={<ListIcon />} accent="#f87369" />
         <QuickLink
           to={periods.length > 0 ? `/admin/rooster/${periods[periods.length - 1].id}` : '/admin/periodes/nieuw'}
           title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} accent="#3c3c3b" />
+        <QuickLink to="/admin/inzichten" title="Inzichten" desc="Bezetting, uren en ziekte" icon={<ChartIcon />} accent="#0ea5e9" />
       </div>
 
       {/* Pending swap approvals */}
@@ -331,6 +332,14 @@ function GridIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18" />
+    </svg>
+  )
+}
+
+function ChartIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.5V21h4.5v-7.5H3zm6.75-6V21h4.5V7.5h-4.5zm6.75-4.5V21H21V3h-4.5z" />
     </svg>
   )
 }

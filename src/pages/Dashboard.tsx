@@ -15,6 +15,7 @@ export default function Dashboard() {
   const { profile, isAdmin, loading: authLoading } = useAuth()
   const [activePeriod, setActivePeriod] = useState<RosterPeriod | null>(null)
   const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([])
+  const [reserveCount, setReserveCount] = useState(0)
   const [upcomingShifts, setUpcomingShifts] = useState<UpcomingShift[]>([])
   const [weekHours, setWeekHours] = useState(0)
   const [monthHours, setMonthHours] = useState(0)
@@ -51,6 +52,10 @@ export default function Dashboard() {
         const pending = assignments.filter(a => a.status === 'pending')
         setPendingAssignments(pending)
 
+        // Reserve = op de reservelijst voor een toekomstige dienst
+        setReserveCount(assignments.filter(a =>
+          a.status === 'reserve' && a.shifts && new Date(a.shifts.shift_date) >= today).length)
+
         // Upcoming = goedgekeurde toekomstige diensten
         const upcoming = assignments
           .filter(a => a.shifts && new Date(a.shifts.shift_date) >= today && a.status === 'approved')
@@ -75,6 +80,7 @@ export default function Dashboard() {
         setMonthHours(mh)
       } else {
         setPendingAssignments([])
+        setReserveCount(0)
       }
     } catch (err) {
       console.error('Dashboard fout:', err)
@@ -146,6 +152,27 @@ export default function Dashboard() {
             </div>
           </div>
           <Link to="/beschikbaarheid"
+            className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-100 text-gray-500 hover:bg-gray-50 transition-colors">
+            Bekijken
+          </Link>
+        </div>
+      )}
+
+      {/* Reservelijst banner */}
+      {reserveCount > 0 && (
+        <div className="card p-5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
+              <div className="w-3 h-3 rounded-full bg-sky-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-dark text-sm">
+                Reservelijst: {reserveCount} dienst{reserveCount !== 1 ? 'en' : ''}
+              </p>
+              <p className="text-gray-400 text-xs mt-0.5">Word je ingepland, dan krijg je een melding en e-mail.</p>
+            </div>
+          </div>
+          <Link to="/mijn-rooster"
             className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-100 text-gray-500 hover:bg-gray-50 transition-colors">
             Bekijken
           </Link>

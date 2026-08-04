@@ -12,6 +12,7 @@ import NieuwePeriode from './pages/admin/NieuwePeriode'
 import RoosterBeheer from './pages/admin/RoosterBeheer'
 import Studenten from './pages/admin/Studenten'
 import BeschikbaarheidOverzicht from './pages/admin/BeschikbaarheidOverzicht'
+import Inzichten from './pages/admin/Inzichten'
 import Inbox from './pages/Inbox'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
@@ -51,6 +52,7 @@ function AppRoutes() {
       <Route path="/admin/rooster/:periodId" element={<ProtectedRoute adminOnly><RoosterBeheer /></ProtectedRoute>} />
       <Route path="/admin/studenten" element={<ProtectedRoute adminOnly><Studenten /></ProtectedRoute>} />
       <Route path="/admin/beschikbaarheid" element={<ProtectedRoute adminOnly><BeschikbaarheidOverzicht /></ProtectedRoute>} />
+      <Route path="/admin/inzichten" element={<ProtectedRoute adminOnly><Inzichten /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

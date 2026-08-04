@@ -36,6 +36,7 @@ drie delen:
   - [B8. Ruilverzoeken definitief goedkeuren](#b8-ruilverzoeken-definitief-goedkeuren)
   - [B9. Uren exporteren voor de financiële administratie](#b9-uren-exporteren-voor-de-financiële-administratie)
   - [B10. Het rooster publiceren](#b10-het-rooster-publiceren)
+  - [B11. Inzichten](#b11-inzichten)
 - [Deel C — Technisch beheer](#deel-c--technisch-beheer)
 - [Veelgestelde vragen & problemen](#veelgestelde-vragen--problemen)
 - [De maandelijkse routine in het kort](#de-maandelijkse-routine-in-het-kort)
@@ -411,6 +412,27 @@ Per periode op het beheerpaneel staan drie schakelaars:
 
 Een typische volgorde: *Inschrijving open* → aanmeldingen goedkeuren →
 *Inschrijving dicht* → eventueel *2e ronde* → *Publiceer*.
+
+---
+
+## B11. Inzichten
+
+Via de tegel **Inzichten** op het beheerpaneel zie je per maand (met een
+maandkiezer voor historie):
+
+- **Diensten met open plekken** — alle nog niet gevulde diensten, met per
+  dienst of er reserves klaarstaan. Zo zie je in één oogopslag waar actie
+  nodig is, zonder de kalender door te klikken.
+- **Uren en aanwezigheid per medewerker** — ingeplande uren t.o.v. het
+  maandcontract (gekleurd balkje: amber = onder minimum, groen = binnen
+  contract, rood = boven maximum), plus het aantal ziek- en
+  afwezigmeldingen.
+
+> 💡 Valt iemand uit op een dienst waar reserves voor klaarstaan, dan krijg
+> je als beheerder een melding *"Plek vrijgekomen — reserve beschikbaar"*.
+> De brede "plek vrijgekomen"-melding naar alle medewerkers gaat dan
+> **niet** uit; die komt alleen nog als de reservelijst leeg is én de
+> inschrijving nog open staat.
 
 ---
 
