@@ -285,6 +285,19 @@ Vanuit de dag-weergave kun je:
 - **Direct toewijzen** — zet zelf een medewerker op een dienst (meteen
   goedgekeurd), zonder dat die zich hoeft aan te melden.
 
+**Gespreide werktijden (vroeg/laat):**
+
+- Werkt iemand de **hele dag** (ochtend + middag), dan verschijnt bovenin het
+  dagpaneel het blok **"Hele dag — tijdverdeling"**. Met één klik zet je die
+  persoon op **Vroeg (08:00–17:00)** of **Laat (08:30–17:30)** — handig als de
+  één opent en de ander sluit. Beide varianten zijn precies 9 uur; met
+  **Standaard** zet je de gewone tijden terug.
+- Bij een **los dagdeel** klik je op de werktijd van een medewerker en kies je
+  onder "Snel:" de vroege of late variant van dat dagdeel (ochtend
+  08:00–12:00 / 08:30–12:30, middag 12:00–17:00 / 12:30–17:30).
+- De aangepaste tijden tellen automatisch mee in Mijn rooster, de Google
+  Agenda-synchronisatie en de urenexport.
+
 ---
 
 ## B4. Aanvragen goedkeuren of afwijzen

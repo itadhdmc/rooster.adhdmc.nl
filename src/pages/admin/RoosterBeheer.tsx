@@ -10,6 +10,14 @@ const DEFAULT_TEMPLATES: Record<string, { start_time: string; end_time: string; 
   middag: { start_time: '12:00', end_time: '17:30', duration_hours: 5.5 },
 }
 
+// Vroege/late tijdvariant per dagdeel. De blokken sluiten op elkaar aan,
+// zodat een hele dag (ochtend + middag) op precies 9 uur uitkomt:
+// vroeg = 08:00–17:00, laat = 08:30–17:30 — zonder dubbele overlap-uren.
+const TIME_PRESETS = {
+  ochtend: { vroeg: { start: '08:00', end: '12:00' }, laat: { start: '08:30', end: '12:30' } },
+  middag:  { vroeg: { start: '12:00', end: '17:00' }, laat: { start: '12:30', end: '17:30' } },
+} as const
+
 // Aanwezigheid + eventuele afwijkende werktijden per toewijzing.
 interface AssignmentMeta {
   attendance: string
@@ -144,6 +152,38 @@ export default function RoosterBeheer() {
     }).eq('id', assignmentId)
     if (error) alert('Tijden terugzetten mislukt: ' + error.message)
     setTimeEdit(null)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  // Snelkeuze: vroege of late variant voor één dagdeel.
+  async function applyPreset(assignmentId: string, shiftType: 'ochtend' | 'middag', variant: 'vroeg' | 'laat') {
+    const p = TIME_PRESETS[shiftType][variant]
+    setProcessing(assignmentId)
+    const { error } = await supabase.from('assignments').update({
+      custom_start_time: p.start,
+      custom_end_time: p.end,
+    }).eq('id', assignmentId)
+    if (error) alert('Tijden opslaan mislukt: ' + error.message)
+    else setTimeEdit(null)
+    await loadAll()
+    setProcessing(null)
+  }
+
+  // Vroege/late dagvariant voor wie de hele dag werkt: zet beide dagdelen
+  // in één klik op aansluitende tijden ('standaard' zet ze terug).
+  async function applyDayVariant(morningId: string, afternoonId: string, variant: 'vroeg' | 'laat' | 'standaard') {
+    const times = (type: 'ochtend' | 'middag') =>
+      variant === 'standaard'
+        ? { custom_start_time: null, custom_end_time: null }
+        : { custom_start_time: TIME_PRESETS[type][variant].start, custom_end_time: TIME_PRESETS[type][variant].end }
+    setProcessing(morningId)
+    const [r1, r2] = await Promise.all([
+      supabase.from('assignments').update(times('ochtend')).eq('id', morningId),
+      supabase.from('assignments').update(times('middag')).eq('id', afternoonId),
+    ])
+    const err = r1.error || r2.error
+    if (err) alert('Dagverdeling opslaan mislukt: ' + err.message)
     await loadAll()
     setProcessing(null)
   }
@@ -288,6 +328,30 @@ export default function RoosterBeheer() {
   // Diensttypes die op de geselecteerde dag nog ontbreken (toe te voegen).
   const missingDayTypes = (['ochtend', 'middag'] as const)
     .filter(t => !selectedDayShifts.some(s => s.shift_type === t))
+
+  // Wie werkt de hele geselecteerde dag (ochtend én middag goedgekeurd)?
+  const dayMorning = selectedDayShifts.find(s => s.shift_type === 'ochtend')
+  const dayAfternoon = selectedDayShifts.find(s => s.shift_type === 'middag')
+  const fullDayWorkers = dayMorning && dayAfternoon
+    ? (dayMorning.assigned_students || [])
+        .filter(a => a.status === 'approved')
+        .flatMap(m => {
+          const a = (dayAfternoon.assigned_students || [])
+            .find(x => x.user_id === m.user_id && x.status === 'approved')
+          return a ? [{ user_id: m.user_id, name: m.full_name || m.email, morningId: m.assignment_id, afternoonId: a.assignment_id }] : []
+        })
+    : []
+
+  // Welke dagvariant heeft iemand nu (op basis van de afwijkende tijden)?
+  function dayVariantOf(morningId: string, afternoonId: string): 'vroeg' | 'laat' | null {
+    const m = meta[morningId], a = meta[afternoonId]
+    const matches = (v: 'vroeg' | 'laat') =>
+      m?.custom_start_time?.slice(0, 5) === TIME_PRESETS.ochtend[v].start &&
+      m?.custom_end_time?.slice(0, 5) === TIME_PRESETS.ochtend[v].end &&
+      a?.custom_start_time?.slice(0, 5) === TIME_PRESETS.middag[v].start &&
+      a?.custom_end_time?.slice(0, 5) === TIME_PRESETS.middag[v].end
+    return matches('vroeg') ? 'vroeg' : matches('laat') ? 'laat' : null
+  }
 
   // Students not yet assigned or pending for a given shift
   function unassignedStudents(shift: ShiftWithAssignments): Profile[] {
@@ -473,6 +537,43 @@ export default function RoosterBeheer() {
             <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
             <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
           </div>
+
+          {/* Tijdverdeling voor wie de hele dag werkt */}
+          {fullDayWorkers.length > 0 && (
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Hele dag — tijdverdeling</p>
+              <div className="space-y-2">
+                {fullDayWorkers.map(w => {
+                  const variant = dayVariantOf(w.morningId, w.afternoonId)
+                  const busy = processing === w.morningId
+                  return (
+                    <div key={w.user_id} className="flex items-center justify-between gap-2 flex-wrap bg-white border border-gray-100 rounded-xl px-3 py-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                        <span className="text-sm font-semibold text-dark truncate">{w.name}</span>
+                        <span className={`text-xs ${variant ? 'font-semibold text-indigo-600' : 'text-gray-400'}`}>
+                          {variant === 'vroeg' ? '08:00 – 17:00' : variant === 'laat' ? '08:30 – 17:30' : 'standaardtijden'}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        <VariantBtn label="Vroeg 08:00–17:00" active={variant === 'vroeg'} disabled={busy}
+                          onClick={() => applyDayVariant(w.morningId, w.afternoonId, 'vroeg')} />
+                        <VariantBtn label="Laat 08:30–17:30" active={variant === 'laat'} disabled={busy}
+                          onClick={() => applyDayVariant(w.morningId, w.afternoonId, 'laat')} />
+                        {variant && (
+                          <VariantBtn label="Standaard" active={false} disabled={busy}
+                            onClick={() => applyDayVariant(w.morningId, w.afternoonId, 'standaard')} />
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2">
+                Vroeg en laat zijn aansluitende blokken (ochtend + middag) van samen 9 uur, zonder dubbele overlap-uren.
+              </p>
+            </div>
+          )}
 
           {selectedDayShifts.length === 0 ? (
             <p className="px-5 py-6 text-sm text-gray-400 italic">Geen diensten op deze dag.</p>
@@ -688,6 +789,21 @@ export default function RoosterBeheer() {
                                 {/* Tijden-editor voor deze medewerker */}
                                 {isTimeEditing && timeEdit && (
                                   <div className="mt-2.5 pt-2.5 border-t border-black/5 flex flex-wrap items-center gap-2">
+                                    <div className="w-full flex flex-wrap items-center gap-2">
+                                      <span className="text-xs text-gray-500 font-medium">Snel:</span>
+                                      <VariantBtn
+                                        label={`Vroeg ${TIME_PRESETS[shift.shift_type].vroeg.start}–${TIME_PRESETS[shift.shift_type].vroeg.end}`}
+                                        active={effStart === TIME_PRESETS[shift.shift_type].vroeg.start && effEnd === TIME_PRESETS[shift.shift_type].vroeg.end}
+                                        disabled={processing === s.assignment_id}
+                                        onClick={() => applyPreset(s.assignment_id, shift.shift_type, 'vroeg')}
+                                      />
+                                      <VariantBtn
+                                        label={`Laat ${TIME_PRESETS[shift.shift_type].laat.start}–${TIME_PRESETS[shift.shift_type].laat.end}`}
+                                        active={effStart === TIME_PRESETS[shift.shift_type].laat.start && effEnd === TIME_PRESETS[shift.shift_type].laat.end}
+                                        disabled={processing === s.assignment_id}
+                                        onClick={() => applyPreset(s.assignment_id, shift.shift_type, 'laat')}
+                                      />
+                                    </div>
                                     <span className="text-xs text-gray-500 font-medium">Werktijd:</span>
                                     <input
                                       type="time"
@@ -993,6 +1109,21 @@ function TrashIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
     </svg>
+  )
+}
+
+function VariantBtn({ label, active, disabled, onClick }: {
+  label: string; active: boolean; disabled: boolean; onClick: () => void
+}) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+        active
+          ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+          : 'border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300'
+      }`}>
+      {label}
+    </button>
   )
 }
 
