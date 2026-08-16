@@ -388,30 +388,38 @@ terecht:
 
 ## B9. Uren exporteren voor de financiële administratie
 
-Aan het eind van de maand exporteer je de gewerkte uren:
-
 1. Ga naar **Beheer**.
-2. Zoek bij **Roosterperiodes** de juiste maand.
-3. Klik op **Uren export**.
-4. Er wordt een bestand **`uren-<maand>-<jaar>.csv`** gedownload dat direct in
-   **Excel** opent.
+2. Zoek bij **Roosterperiodes** de juiste maand en klik op **Uren export**.
+3. Kies het **datumbereik**: standaard de hele maand, of klik **T/m vandaag**
+   om alleen de dagen te exporteren die al voorbij zijn (handig voor een
+   tussentijdse controle). Je kunt de begin- en einddatum ook vrij kiezen.
+4. Kies de download:
+   - **Overzicht per medewerker** — `uren-<maand>-<jaar>.csv`
+   - **Detail per dienst** — `uren-detail-<maand>-<jaar>.csv`
+   (Bij een deelbereik komt het bereik in de bestandsnaam, bijv.
+   `uren-augustus-2026-01-08-tm-15-08.csv`.)
 
-Het bestand bevat per medewerker:
+**Overzicht per medewerker** bevat per medewerker:
 
 | Kolom | Betekenis |
 |-------|-----------|
-| Naam | Naam van de medewerker |
-| E-mail | E-mailadres |
-| Gewerkte dagen | Aantal verschillende dagen gewerkt |
-| Aantal diensten | Totaal aantal diensten |
-| Ochtenddiensten | Aantal ochtenddiensten |
-| Middagdiensten | Aantal middagdiensten |
-| Totaal uren | Totaal aantal uren |
+| Naam / E-mail | Medewerker |
+| Gewerkte dagen / diensten | Aantallen (alleen gewerkt) |
+| Ochtend- / Middag- / Zaterdagdiensten | Aantallen per soort |
+| Uren doordeweeks | Gewerkte uren op ma t/m vr |
+| Uren zaterdag | Gewerkte uren op zaterdag — voor de **zaterdagtoeslag** |
+| Totaal uren | Doordeweeks + zaterdag |
+| Ziek / Afwezig (diensten én uren) | Voor loondoorbetaling bij ziekte |
 
-Onderaan staat een **TOTAAL**-regel over alle medewerkers.
+Onderaan staan een **TOTAAL**-regel en **weektotalen** per medewerker per
+weeknummer (loonweken), ook gesplitst in doordeweeks/zaterdag.
 
-> ⚠️ Alleen **goedgekeurde** diensten tellen mee (= daadwerkelijk gewerkt).
-> Exporteer dus pas als alle diensten van de maand zijn goedgekeurd.
+**Detail per dienst** is de brondata: één regel per goedgekeurde dienst met
+datum, dag, weeknummer, zaterdag ja/nee, medewerker, werktijden (inclusief
+afwijkende tijden), uren en aanwezigheid.
+
+> ⚠️ Alleen **goedgekeurde** diensten tellen mee. Ziek/afwezig gemarkeerde
+> diensten staan apart en tellen niet mee als gewerkte uren.
 
 ---
 
