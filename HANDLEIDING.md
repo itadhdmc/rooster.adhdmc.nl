@@ -406,10 +406,18 @@ terecht:
 | Naam / E-mail | Medewerker |
 | Gewerkte dagen / diensten | Aantallen (alleen gewerkt) |
 | Ochtend- / Middag- / Zaterdagdiensten | Aantallen per soort |
-| Uren doordeweeks | Gewerkte uren op ma t/m vr |
-| Uren zaterdag | Gewerkte uren op zaterdag — voor de **zaterdagtoeslag** |
-| Totaal uren | Doordeweeks + zaterdag |
+| Uren doordeweeks | Verloonde uren op ma t/m vr |
+| Uren zaterdag | Verloonde uren op zaterdag — voor de **zaterdagtoeslag** |
+| Pauze-uren (onbetaald) | Afgetrokken pauzes (zie hieronder) |
+| Totaal verloonde uren | Doordeweeks + zaterdag (pauze al verrekend) |
 | Ziek / Afwezig (diensten én uren) | Voor loondoorbetaling bij ziekte |
+
+**Pauzeregel:** wie op één dag **beide dagdelen** werkt (hele dag) krijgt de
+onbetaalde pauze van **12:00–12:30** (0,5 uur) afgetrokken; eventuele dubbele
+overlap tussen ochtend en middag wordt ook verrekend. Losse ochtend- of
+middagdiensten krijgen géén aftrek — de middagploeg vangt juist de pauze van
+de dagwerkers op. In de detail-export staan deze correcties als aparte regels
+("pauze (onbetaald)" en "overlapcorrectie"), zodat alles optelt.
 
 Onderaan staan een **TOTAAL**-regel en **weektotalen** per medewerker per
 weeknummer (loonweken), ook gesplitst in doordeweeks/zaterdag.

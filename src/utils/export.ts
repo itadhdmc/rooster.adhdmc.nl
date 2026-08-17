@@ -36,6 +36,7 @@ interface StudentTotals {
   saturdayShifts: number
   weekdayHours: number
   saturdayHours: number
+  pauseHours: number
   sick: number
   sickHours: number
   absent: number
@@ -82,12 +83,41 @@ function ddmm(dateStr: string): string {
   return `${d}-${m}`
 }
 
+// Onbetaalde pauze voor wie de hele dag werkt (beide dagdelen).
+// Losse dagdelen krijgen geen aftrek: de middagploeg vangt juist de
+// pauze van de dagwerkers op (daarvoor bestaat de middagoverlap).
+const PAUSE_START = '12:00'
+const PAUSE_END = '12:30'
+const PAUSE_HOURS = 0.5
+
 // Werkelijke uren van één toewijzing: afwijkende werktijden gaan vóór
 // de standaardduur van de dienst.
 function rowHours(row: AssignmentExportRow): number {
   return row.custom_start_time && row.custom_end_time
     ? hoursBetween(row.custom_start_time, row.custom_end_time)
     : Number(row.shifts.duration_hours)
+}
+
+// Overlap (in uren) tussen twee gewerkte blokken op dezelfde dag, op basis
+// van de effectieve tijden. Bij de standaardtijden is dat 12:00–12:30;
+// die tijd mag niet dubbel verloond worden.
+function overlapHours(a: AssignmentExportRow, b: AssignmentExportRow): number {
+  const ta = rowTimes(a), tb = rowTimes(b)
+  const start = ta.start > tb.start ? ta.start : tb.start
+  const end = ta.end < tb.end ? ta.end : tb.end
+  return end > start ? hoursBetween(start, end) : 0
+}
+
+// Verloonde uren van één dag: som van de blokken, minus dubbele overlap,
+// en bij een hele dag (2+ blokken) minus de onbetaalde pauze.
+function dayPaidHours(rows: AssignmentExportRow[]): { hours: number; pause: number; overlap: number } {
+  const gross = rows.reduce((n, r) => n + rowHours(r), 0)
+  if (rows.length < 2) return { hours: gross, pause: 0, overlap: 0 }
+  let overlap = 0
+  for (let i = 0; i < rows.length; i++)
+    for (let j = i + 1; j < rows.length; j++)
+      overlap += overlapHours(rows[i], rows[j])
+  return { hours: gross - overlap - PAUSE_HOURS, pause: PAUSE_HOURS, overlap }
 }
 
 function rowTimes(row: AssignmentExportRow): { start: string; end: string } {
@@ -148,39 +178,60 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
   const res = await fetchApproved(period, range)
   if (!res.ok) return res
 
-  // Aggregeren per medewerker + per week.
+  // Aggregeren per medewerker + per week. Gewerkte diensten worden per dag
+  // gegroepeerd, zodat de onbetaalde pauze en de middagoverlap per hele
+  // dag verrekend worden (zie dayPaidHours).
   const totals = new Map<string, StudentTotals>()
   const weekTotals = new Map<string, { week: number; name: string; weekdayHours: number; saturdayHours: number }>()
-  for (const row of res.rows) {
-    const shift = row.shifts
-    const prof = res.profiles.get(row.user_id)
-    const name = prof?.full_name || prof?.email || 'Onbekend'
-    let t = totals.get(row.user_id)
+  const dayGroups = new Map<string, AssignmentExportRow[]>()
+
+  const totalsFor = (userId: string): StudentTotals => {
+    let t = totals.get(userId)
     if (!t) {
+      const prof = res.profiles.get(userId)
       t = {
-        name, email: prof?.email || '', days: new Set(), shifts: 0, ochtend: 0, middag: 0,
-        saturdayShifts: 0, weekdayHours: 0, saturdayHours: 0,
+        name: prof?.full_name || prof?.email || 'Onbekend', email: prof?.email || '',
+        days: new Set(), shifts: 0, ochtend: 0, middag: 0,
+        saturdayShifts: 0, weekdayHours: 0, saturdayHours: 0, pauseHours: 0,
         sick: 0, sickHours: 0, absent: 0, absentHours: 0,
       }
-      totals.set(row.user_id, t)
+      totals.set(userId, t)
     }
+    return t
+  }
+
+  for (const row of res.rows) {
+    const t = totalsFor(row.user_id)
     const hours = rowHours(row)
     const att = row.attendance || 'gewerkt'
     if (att === 'ziek') { t.sick += 1; t.sickHours += hours; continue }
     if (att === 'afwezig') { t.absent += 1; t.absentHours += hours; continue }
 
-    const sat = isSaturdayISO(shift.shift_date)
+    const shift = row.shifts
     t.days.add(shift.shift_date)
     t.shifts += 1
     if (shift.shift_type === 'ochtend') t.ochtend += 1
     else if (shift.shift_type === 'middag') t.middag += 1
-    if (sat) { t.saturdayShifts += 1; t.saturdayHours += hours }
-    else t.weekdayHours += hours
+    if (isSaturdayISO(shift.shift_date)) t.saturdayShifts += 1
 
-    const week = isoWeek(shift.shift_date)
-    const wKey = `${week}|${row.user_id}`
+    const key = `${row.user_id}|${shift.shift_date}`
+    if (!dayGroups.has(key)) dayGroups.set(key, [])
+    dayGroups.get(key)!.push(row)
+  }
+
+  for (const [key, rows] of dayGroups) {
+    const [userId, date] = key.split('|')
+    const t = totalsFor(userId)
+    const { hours, pause } = dayPaidHours(rows)
+    const sat = isSaturdayISO(date)
+    if (sat) t.saturdayHours += hours
+    else t.weekdayHours += hours
+    t.pauseHours += pause
+
+    const week = isoWeek(date)
+    const wKey = `${week}|${userId}`
     let w = weekTotals.get(wKey)
-    if (!w) { w = { week, name, weekdayHours: 0, saturdayHours: 0 }; weekTotals.set(wKey, w) }
+    if (!w) { w = { week, name: t.name, weekdayHours: 0, saturdayHours: 0 }; weekTotals.set(wKey, w) }
     if (sat) w.saturdayHours += hours
     else w.weekdayHours += hours
   }
@@ -192,14 +243,15 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
   lines.push('')
   const header = [
     'Naam', 'E-mail', 'Gewerkte dagen', 'Gewerkte diensten', 'Ochtenddiensten', 'Middagdiensten',
-    'Zaterdagdiensten', 'Uren doordeweeks', 'Uren zaterdag', 'Totaal uren',
+    'Zaterdagdiensten', 'Uren doordeweeks', 'Uren zaterdag', 'Pauze-uren (onbetaald)', 'Totaal verloonde uren',
     'Ziek (diensten)', 'Ziek (uren)', 'Afwezig (diensten)', 'Afwezig (uren)',
   ]
   lines.push(header.map(cell).join(';'))
   for (const r of rows) {
     lines.push([
       cell(r.name), cell(r.email), r.days.size, r.shifts, r.ochtend, r.middag,
-      r.saturdayShifts, cell(nl(r.weekdayHours)), cell(nl(r.saturdayHours)), cell(nl(r.weekdayHours + r.saturdayHours)),
+      r.saturdayShifts, cell(nl(r.weekdayHours)), cell(nl(r.saturdayHours)),
+      cell(nl(r.pauseHours)), cell(nl(r.weekdayHours + r.saturdayHours)),
       r.sick, cell(nl(r.sickHours)), r.absent, cell(nl(r.absentHours)),
     ].join(';'))
   }
@@ -208,6 +260,7 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
     cell('TOTAAL'), '', '',
     sum(r => r.shifts), sum(r => r.ochtend), sum(r => r.middag), sum(r => r.saturdayShifts),
     cell(nl(sum(r => r.weekdayHours))), cell(nl(sum(r => r.saturdayHours))),
+    cell(nl(sum(r => r.pauseHours))),
     cell(nl(sum(r => r.weekdayHours + r.saturdayHours))),
     sum(r => r.sick), cell(nl(sum(r => r.sickHours))), sum(r => r.absent), cell(nl(sum(r => r.absentHours))),
   ].join(';'))
@@ -238,35 +291,60 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
   const res = await fetchApproved(period, range)
   if (!res.ok) return res
 
-  const sorted = [...res.rows].sort((a, b) =>
-    a.shifts.shift_date.localeCompare(b.shifts.shift_date) ||
-    a.shifts.shift_type.localeCompare(b.shifts.shift_type) ||
-    (res.profiles.get(a.user_id)?.full_name || '').localeCompare(res.profiles.get(b.user_id)?.full_name || ''))
+  // Groeperen per dag + medewerker, zodat de pauze- en overlapcorrecties
+  // van een hele dag als eigen regels direct onder de diensten staan.
+  const groups = new Map<string, AssignmentExportRow[]>()
+  for (const row of res.rows) {
+    const key = `${row.shifts.shift_date}|${row.user_id}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(row)
+  }
+  const groupKeys = [...groups.keys()].sort((a, b) => {
+    const [da, ua] = a.split('|'), [db, ub] = b.split('|')
+    return da.localeCompare(db) ||
+      (res.profiles.get(ua)?.full_name || '').localeCompare(res.profiles.get(ub)?.full_name || '')
+  })
 
   const lines: string[] = []
   lines.push(cell(`Urenexport detail ${rangeLabel(period, range)}`))
   lines.push('')
   lines.push(['Datum', 'Dag', 'Week', 'Zaterdag', 'Naam', 'E-mail', 'Dagdeel', 'Van', 'Tot', 'Uren', 'Aanwezigheid'].map(cell).join(';'))
 
-  let workedTotal = 0
-  for (const row of sorted) {
-    const shift = row.shifts
-    const prof = res.profiles.get(row.user_id)
-    const { start, end } = rowTimes(row)
-    const hours = rowHours(row)
-    const att = row.attendance || 'gewerkt'
-    if (att === 'gewerkt') workedTotal += hours
-    const weekday = new Date(shift.shift_date + 'T00:00:00')
-      .toLocaleDateString('nl-NL', { weekday: 'long' })
-    lines.push([
-      cell(ddmm(shift.shift_date) + '-' + period.year), cell(weekday), cell(`Week ${isoWeek(shift.shift_date)}`),
-      cell(isSaturdayISO(shift.shift_date) ? 'ja' : 'nee'),
+  let paidTotal = 0
+  for (const key of groupKeys) {
+    const dayRows = groups.get(key)!.sort((a, b) => a.shifts.shift_type.localeCompare(b.shifts.shift_type))
+    const [date] = key.split('|')
+    const prof = res.profiles.get(dayRows[0].user_id)
+    const weekday = new Date(date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'long' })
+    const base = [
+      cell(ddmm(date) + '-' + period.year), cell(weekday), cell(`Week ${isoWeek(date)}`),
+      cell(isSaturdayISO(date) ? 'ja' : 'nee'),
       cell(prof?.full_name || prof?.email || 'Onbekend'), cell(prof?.email || ''),
-      cell(shift.shift_type), cell(start), cell(end), cell(nl(hours)), cell(att),
-    ].join(';'))
+    ]
+
+    for (const row of dayRows) {
+      const { start, end } = rowTimes(row)
+      lines.push([
+        ...base, cell(row.shifts.shift_type), cell(start), cell(end),
+        cell(nl(rowHours(row))), cell(row.attendance || 'gewerkt'),
+      ].join(';'))
+    }
+
+    const worked = dayRows.filter(r => (r.attendance || 'gewerkt') === 'gewerkt')
+    if (worked.length >= 2) {
+      // Hele dag: dubbele overlap en onbetaalde pauze als correctieregels.
+      const { hours, pause, overlap } = dayPaidHours(worked)
+      if (overlap > 0) {
+        lines.push([...base, cell('overlapcorrectie'), '', '', cell(nl(-overlap)), cell('-')].join(';'))
+      }
+      lines.push([...base, cell('pauze (onbetaald)'), cell(PAUSE_START), cell(PAUSE_END), cell(nl(-pause)), cell('-')].join(';'))
+      paidTotal += hours
+    } else {
+      paidTotal += worked.reduce((n, r) => n + rowHours(r), 0)
+    }
   }
   lines.push('')
-  lines.push([cell('TOTAAL gewerkte uren'), '', '', '', '', '', '', '', '', cell(nl(workedTotal)), ''].join(';'))
+  lines.push([cell('TOTAAL verloonde uren'), '', '', '', '', '', '', '', '', cell(nl(paidTotal)), ''].join(';'))
 
   const monthName = MONTHS_NL[period.month - 1]
   triggerDownload(`uren-detail-${monthName}-${period.year}${rangeSuffix(period, range)}.csv`, lines.join('\r\n'))
