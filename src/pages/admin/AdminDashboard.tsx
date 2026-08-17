@@ -112,13 +112,15 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick links */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <QuickLink to="/admin/studenten" title="Medewerkers" desc="Beheer rollen en contracturen" icon={<UsersIcon />} accent="#6366f1" />
         <QuickLink to="/admin/beschikbaarheid" title="Beschikbaarheid" desc="Ingegeven beschikbaarheid" icon={<ListIcon />} accent="#f87369" />
         <QuickLink
           to={periods.length > 0 ? `/admin/rooster/${periods[periods.length - 1].id}` : '/admin/periodes/nieuw'}
           title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} accent="#3c3c3b" />
         <QuickLink to="/admin/inzichten" title="Inzichten" desc="Bezetting, uren en ziekte" icon={<ChartIcon />} accent="#0ea5e9" />
+        <QuickLink to="/admin/financien" title="Financieel" desc="Verloonde uren, toeslag en pauzes" icon={<EuroIcon />} accent="#10b981" />
+        <QuickLink to="/admin/logboek" title="Logboek" desc="Wie wijzigde wat, en wanneer" icon={<HistoryIcon />} accent="#a855f7" />
       </div>
 
       {/* Pending swap approvals */}
@@ -349,6 +351,14 @@ function PeriodCard({ period, onUpdate, onExport }: { period: RosterPeriod; onUp
             </svg>
             Uren export
           </button>
+          <Link
+            to={`/admin/financien?periode=${period.id}`}
+            title="Financieel dashboard: verloonde uren, zaterdagtoeslag en pauzes met grafieken"
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl font-semibold border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+          >
+            <EuroIcon className="w-3.5 h-3.5" />
+            Financieel
+          </Link>
           <Link to={`/admin/rooster/${period.id}`}
             className="text-xs px-3.5 py-1.5 rounded-xl font-semibold bg-dark text-white hover:opacity-80 transition-opacity">
             Beheren →
@@ -446,6 +456,23 @@ function GridIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18" />
+    </svg>
+  )
+}
+
+function EuroIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 7.756a4.5 4.5 0 1 0 0 8.488M7.5 10.5h5.25m-5.25 3h5.25" />
+      <circle cx="12" cy="12" r="9.25" strokeWidth={1.5} />
+    </svg>
+  )
+}
+
+function HistoryIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M3.5 12a8.5 8.5 0 1 1 2.6 6.1M3.5 12H1m2.5 0 1.8 1.8" />
     </svg>
   )
 }

@@ -73,3 +73,15 @@ export function getWeeksInMonth(year: number, month: number): (Date | null)[][] 
   }
   return result
 }
+
+// ISO-weeknummer van een ISO-datumstring (loonweken).
+export function isoWeek(dateStr: string): number {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+  const week1 = new Date(d.getFullYear(), 0, 4)
+  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+}
+
+export function isSaturdayISO(dateStr: string): boolean {
+  return new Date(dateStr + 'T00:00:00').getDay() === 6
+}

@@ -13,6 +13,8 @@ import RoosterBeheer from './pages/admin/RoosterBeheer'
 import Studenten from './pages/admin/Studenten'
 import BeschikbaarheidOverzicht from './pages/admin/BeschikbaarheidOverzicht'
 import Inzichten from './pages/admin/Inzichten'
+import Financien from './pages/admin/Financien'
+import Logboek from './pages/admin/Logboek'
 import Inbox from './pages/Inbox'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
@@ -53,6 +55,8 @@ function AppRoutes() {
       <Route path="/admin/studenten" element={<ProtectedRoute adminOnly><Studenten /></ProtectedRoute>} />
       <Route path="/admin/beschikbaarheid" element={<ProtectedRoute adminOnly><BeschikbaarheidOverzicht /></ProtectedRoute>} />
       <Route path="/admin/inzichten" element={<ProtectedRoute adminOnly><Inzichten /></ProtectedRoute>} />
+      <Route path="/admin/financien" element={<ProtectedRoute adminOnly><Financien /></ProtectedRoute>} />
+      <Route path="/admin/logboek" element={<ProtectedRoute adminOnly><Logboek /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { Profile, RosterPeriod } from '../types'
-import { monthLabel, MONTHS_NL } from './dates'
+import { monthLabel, MONTHS_NL, isoWeek, isSaturdayISO } from './dates'
 import { rowHours, rowTimes, dayPaidHours, PAUSE_START, PAUSE_END } from './paidHours'
 
 interface ExportShiftRow {
@@ -65,17 +65,6 @@ function triggerDownload(filename: string, csv: string) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
-}
-
-function isSaturdayISO(dateStr: string): boolean {
-  return new Date(dateStr + 'T00:00:00').getDay() === 6
-}
-
-function isoWeek(dateStr: string): number {
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
-  const week1 = new Date(d.getFullYear(), 0, 4)
-  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
 }
 
 function ddmm(dateStr: string): string {

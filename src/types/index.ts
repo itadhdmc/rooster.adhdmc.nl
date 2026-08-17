@@ -133,6 +133,18 @@ export interface Notification {
   created_at: string
 }
 
+export interface AuditLogEntry {
+  id: string
+  occurred_at: string
+  actor_id: string | null
+  actor_name: string
+  action: string
+  description: string
+  shift_date: string | null
+  shift_type: string | null
+  target_name: string | null
+}
+
 export interface StudentHours {
   user_id: string
   full_name: string

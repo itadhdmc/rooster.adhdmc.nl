@@ -37,6 +37,8 @@ drie delen:
   - [B9. Uren exporteren voor de financiële administratie](#b9-uren-exporteren-voor-de-financiële-administratie)
   - [B10. Het rooster publiceren](#b10-het-rooster-publiceren)
   - [B11. Inzichten](#b11-inzichten)
+  - [B12. Financieel dashboard](#b12-financieel-dashboard)
+  - [B13. Logboek](#b13-logboek)
 - [Deel C — Technisch beheer](#deel-c--technisch-beheer)
 - [Veelgestelde vragen & problemen](#veelgestelde-vragen--problemen)
 - [De maandelijkse routine in het kort](#de-maandelijkse-routine-in-het-kort)
@@ -462,6 +464,45 @@ maandkiezer voor historie):
 > De brede "plek vrijgekomen"-melding naar alle medewerkers gaat dan
 > **niet** uit; die komt alleen nog als de reservelijst leeg is én de
 > inschrijving nog open staat.
+
+---
+
+## B12. Financieel dashboard
+
+Via de tegel **Financieel** op het beheerpaneel (of de groene knop
+**Financieel** naast "Uren export" bij een periode) zie je per maand de
+**verloonde uren** in grafieken — met exact dezelfde berekening als de
+CSV-export:
+
+- Vier kerncijfers: totaal verloonde uren, zaterdaguren (toeslag),
+  afgetrokken pauze-uren en ziekte-uren.
+- **Verloonde uren per week** (loonweken), gestapeld doordeweeks/zaterdag.
+- **Verloonde uren per medewerker**, met per persoon de zaterdaguren en de
+  afgetrokken pauze.
+- Een **specificatietabel** met dezelfde kolommen als de urenexport.
+
+Zo zie je vóór je exporteert al precies wat de administratie gaat ontvangen,
+inclusief waar de pauze-aftrek vandaan komt.
+
+---
+
+## B13. Logboek
+
+Via de tegel **Logboek** op het beheerpaneel zie je álle roosterwijzigingen:
+wie deed wat, en wanneer. Gelogd worden onder meer: aanmeldingen (en
+intrekkingen), goedkeuren/afwijzen, direct inroosteren, reservelijst-acties,
+werktijd-aanpassingen, aanwezigheid (ziek/afwezig), diensten
+toevoegen/wijzigen/verwijderen en alle stappen van ruilverzoeken.
+
+- Zoek op naam, datum of omschrijving, of filter op actietype.
+- Regels zijn gegroepeerd per dag; bij elke regel staat het tijdstip, wie de
+  actie uitvoerde en om welke dienst het ging.
+- Alleen beheerders kunnen het logboek zien. Het logboek is
+  **niet aanpasbaar** — ook niet door beheerders.
+
+> ℹ️ Het logboek vult zich vanaf het moment dat deze functie is
+> geïnstalleerd; oudere wijzigingen zijn niet met terugwerkende kracht
+> zichtbaar.
 
 ---
 
