@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { RosterPeriod, Profile, ShiftWithAssignments } from '../../types'
 import { monthLabel, formatDate } from '../../utils/dates'
-import { hoursBetween } from '../../utils/shiftTimes'
+import { rowHours, dayPaidHours } from '../../utils/paidHours'
 
 // Assignment-rij zoals de inzichten-query die teruggeeft (met geneste dienst).
 interface InsightAssignmentRow {
@@ -14,6 +14,8 @@ interface InsightAssignmentRow {
   shifts: {
     shift_date: string
     shift_type: string
+    start_time: string
+    end_time: string
     duration_hours: number
     period_id: string
   }
@@ -58,7 +60,7 @@ export default function Inzichten() {
         .eq('period_id', selectedPeriod.id)
         .order('shift_date').order('shift_type'),
       supabase.from('assignments')
-        .select('user_id, attendance, custom_start_time, custom_end_time, shifts!inner(shift_date, shift_type, duration_hours, period_id)')
+        .select('user_id, attendance, custom_start_time, custom_end_time, shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours, period_id)')
         .eq('status', 'approved')
         .eq('shifts.period_id', selectedPeriod.id),
       supabase.from('profiles')
@@ -68,9 +70,11 @@ export default function Inzichten() {
     ])
     setShifts(s || [])
 
-    // Uren, ziekte en afwezigheid per medewerker optellen. Afwijkende
-    // werktijden gaan vóór de standaardduur, net als in de urenexport.
+    // Verloonde uren, ziekte en afwezigheid per medewerker. Zelfde
+    // berekening als de urenexport: gewerkte diensten per dag groeperen,
+    // zodat pauze en middagoverlap van hele dagen verrekend worden.
     const totals = new Map<string, { hours: number; shifts: number; sick: number; absent: number }>()
+    const dayGroups = new Map<string, InsightAssignmentRow[]>()
     for (const row of (a || []) as unknown as InsightAssignmentRow[]) {
       let t = totals.get(row.user_id)
       if (!t) { t = { hours: 0, shifts: 0, sick: 0, absent: 0 }; totals.set(row.user_id, t) }
@@ -78,9 +82,13 @@ export default function Inzichten() {
       if (att === 'ziek') { t.sick += 1; continue }
       if (att === 'afwezig') { t.absent += 1; continue }
       t.shifts += 1
-      t.hours += row.custom_start_time && row.custom_end_time
-        ? hoursBetween(row.custom_start_time, row.custom_end_time)
-        : Number(row.shifts.duration_hours)
+      const key = `${row.user_id}|${row.shifts.shift_date}`
+      if (!dayGroups.has(key)) dayGroups.set(key, [])
+      dayGroups.get(key)!.push(row)
+    }
+    for (const [key, dayRows] of dayGroups) {
+      const userId = key.split('|')[0]
+      totals.get(userId)!.hours += dayRows.length > 1 ? dayPaidHours(dayRows).hours : rowHours(dayRows[0])
     }
     const rows = ((p || []) as Profile[]).map(profile => ({
       profile,
@@ -134,7 +142,7 @@ export default function Inzichten() {
         <>
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Ingeplande uren" value={`${round1(totalHours)}u`} color="text-dark" />
+            <StatCard label="Verloonde uren" value={`${round1(totalHours)}u`} color="text-dark" />
             <StatCard label="Open plekken" value={String(openShifts.reduce((n, s) => n + s.open_spots, 0))}
               color={openShifts.length > 0 ? 'text-amber-600' : 'text-emerald-600'} />
             <StatCard label="Op reservelijst" value={String(totalReserves)} color="text-sky-600" />
@@ -204,7 +212,8 @@ export default function Inzichten() {
             <div className="px-5 py-3.5 border-b border-gray-100">
               <h2 className="font-bold text-dark text-sm">Uren en aanwezigheid per medewerker</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Ingeplande uren t.o.v. het maandcontract. Ziek en afwezig tellen niet als uren mee.
+                Verloonde uren t.o.v. het maandcontract — de onbetaalde pauze (12:00–12:30) van hele
+                dagen is al afgetrokken, net als in de urenexport. Ziek en afwezig tellen niet mee.
               </p>
             </div>
             <div className="divide-y divide-gray-50">

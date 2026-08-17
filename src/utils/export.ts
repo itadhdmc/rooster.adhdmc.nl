@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { Profile, RosterPeriod } from '../types'
 import { monthLabel, MONTHS_NL } from './dates'
-import { hoursBetween } from './shiftTimes'
+import { rowHours, rowTimes, dayPaidHours, PAUSE_START, PAUSE_END } from './paidHours'
 
 interface ExportShiftRow {
   shift_date: string
@@ -83,49 +83,6 @@ function ddmm(dateStr: string): string {
   return `${d}-${m}`
 }
 
-// Onbetaalde pauze voor wie de hele dag werkt (beide dagdelen).
-// Losse dagdelen krijgen geen aftrek: de middagploeg vangt juist de
-// pauze van de dagwerkers op (daarvoor bestaat de middagoverlap).
-const PAUSE_START = '12:00'
-const PAUSE_END = '12:30'
-const PAUSE_HOURS = 0.5
-
-// Werkelijke uren van één toewijzing: afwijkende werktijden gaan vóór
-// de standaardduur van de dienst.
-function rowHours(row: AssignmentExportRow): number {
-  return row.custom_start_time && row.custom_end_time
-    ? hoursBetween(row.custom_start_time, row.custom_end_time)
-    : Number(row.shifts.duration_hours)
-}
-
-// Overlap (in uren) tussen twee gewerkte blokken op dezelfde dag, op basis
-// van de effectieve tijden. Bij de standaardtijden is dat 12:00–12:30;
-// die tijd mag niet dubbel verloond worden.
-function overlapHours(a: AssignmentExportRow, b: AssignmentExportRow): number {
-  const ta = rowTimes(a), tb = rowTimes(b)
-  const start = ta.start > tb.start ? ta.start : tb.start
-  const end = ta.end < tb.end ? ta.end : tb.end
-  return end > start ? hoursBetween(start, end) : 0
-}
-
-// Verloonde uren van één dag: som van de blokken, minus dubbele overlap,
-// en bij een hele dag (2+ blokken) minus de onbetaalde pauze.
-function dayPaidHours(rows: AssignmentExportRow[]): { hours: number; pause: number; overlap: number } {
-  const gross = rows.reduce((n, r) => n + rowHours(r), 0)
-  if (rows.length < 2) return { hours: gross, pause: 0, overlap: 0 }
-  let overlap = 0
-  for (let i = 0; i < rows.length; i++)
-    for (let j = i + 1; j < rows.length; j++)
-      overlap += overlapHours(rows[i], rows[j])
-  return { hours: gross - overlap - PAUSE_HOURS, pause: PAUSE_HOURS, overlap }
-}
-
-function rowTimes(row: AssignmentExportRow): { start: string; end: string } {
-  return {
-    start: (row.custom_start_time || row.shifts.start_time).slice(0, 5),
-    end: (row.custom_end_time || row.shifts.end_time).slice(0, 5),
-  }
-}
 
 // Bestandsnaamdeel voor het bereik: leeg bij een hele maand, anders "01-08-tm-15-08".
 function rangeSuffix(period: RosterPeriod, range: ExportRange): string {
