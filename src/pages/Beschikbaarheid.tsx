@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { useSettings, shiftTypeConfig } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
 import { RosterPeriod, ShiftWithAssignments, Assignment } from '../types'
 import { dateToISO, monthLabel } from '../utils/dates'
@@ -42,8 +43,11 @@ function getWeekOffsetForMonth(year: number, month: number): number {
   return Math.round((targetMonday.getTime() - currentMonday.getTime()) / WEEK_MS)
 }
 
+type Filter = 'alle' | 'beschikbaar' | 'mijn'
+
 export default function Beschikbaarheid() {
   const { profile } = useAuth()
+  const { settings } = useSettings()
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null)
   const [shifts, setShifts] = useState<ShiftWithAssignments[]>([])
@@ -51,6 +55,7 @@ export default function Beschikbaarheid() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [weekOffset, setWeekOffset] = useState(0)
+  const [filter, setFilter] = useState<Filter>('alle')
 
   useEffect(() => { loadPeriods() }, [])
   useEffect(() => { if (selectedPeriod && profile) loadShifts() }, [selectedPeriod, profile])
@@ -63,8 +68,6 @@ export default function Beschikbaarheid() {
   }, [selectedPeriod?.id])
 
   async function loadPeriods() {
-    // Ook gepubliceerde (gesloten) periodes tonen: dan zie je het rooster
-    // en wie er werkt, alleen kun je je niet meer aanmelden.
     const { data } = await supabase
       .from('roster_periods')
       .select('*')
@@ -72,8 +75,6 @@ export default function Beschikbaarheid() {
       .order('year').order('month')
     setPeriods(data || [])
     if (data?.length) {
-      // Standaard de maand van vandaag; anders de eerstvolgende open
-      // inschrijving; anders de meest recente periode.
       const now = new Date()
       const current = data.find(p => p.year === now.getFullYear() && p.month === now.getMonth() + 1)
       const open = data.find(p => p.availability_open || p.second_round_open)
@@ -105,7 +106,7 @@ export default function Beschikbaarheid() {
       user_id: profile.id,
       status: 'pending',
     })
-    if (error) alert('Inschrijven mislukt: ' + error.message)
+    if (error) alert('Aanmelden mislukt: ' + error.message)
     await loadShifts()
     setProcessing(null)
   }
@@ -120,45 +121,58 @@ export default function Beschikbaarheid() {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const signupOpen = !!(selectedPeriod && (selectedPeriod.availability_open || selectedPeriod.second_round_open))
   const weekDays = getWeekDays(weekOffset)
-  const weekStart = weekDays[0]
-  const weekEnd = weekDays[5] // t/m zaterdag (was per ongeluk vrijdag)
 
-  // De "startweek" van de gekozen maand (deze week als het de huidige maand is).
   const monthHomeOffset = selectedPeriod
     ? (today.getFullYear() === selectedPeriod.year && today.getMonth() + 1 === selectedPeriod.month
         ? 0 : getWeekOffsetForMonth(selectedPeriod.year, selectedPeriod.month))
     : 0
 
-  const weekShifts = shifts.filter(s => {
+  const myByShift = useMemo(() => {
+    const map = new Map<string, Assignment>()
+    for (const a of myAssignments) map.set(a.shift_id, a)
+    return map
+  }, [myAssignments])
+
+  function matchesFilter(s: ShiftWithAssignments): boolean {
+    const mine = myByShift.get(s.id)
+    const isPast = new Date(s.shift_date + 'T00:00:00') < today
+    if (filter === 'mijn') return !!mine
+    if (filter === 'beschikbaar') return !mine && !isPast && s.open_spots > 0 && signupOpen
+    return true
+  }
+
+  const myCount = shifts.filter(s => myByShift.has(s.id)).length
+  const availableCount = shifts.filter(s =>
+    !myByShift.has(s.id) && new Date(s.shift_date + 'T00:00:00') >= today && s.open_spots > 0 && signupOpen).length
+
+  // Weekweergave (alleen bij filter 'alle'): dagen van de gekozen week.
+  const weekView = filter === 'alle'
+  const weekStart = weekDays[0]
+  const weekEnd = weekDays[5]
+  const visibleShifts = shifts.filter(s => {
+    if (!matchesFilter(s)) return false
+    if (!weekView) return true
     const d = new Date(s.shift_date + 'T00:00:00')
     return d >= weekStart && d <= weekEnd
   })
 
-  const shiftGrid = weekShifts.reduce<Record<string, Record<string, ShiftWithAssignments>>>((acc, s) => {
-    if (!acc[s.shift_date]) acc[s.shift_date] = {}
-    acc[s.shift_date][s.shift_type] = s
-    return acc
-  }, {})
+  // Groeperen per dag (voor lijst- en kolomweergave).
+  const byDay = useMemo(() => {
+    const map = new Map<string, ShiftWithAssignments[]>()
+    for (const s of visibleShifts) {
+      if (!map.has(s.shift_date)) map.set(s.shift_date, [])
+      map.get(s.shift_date)!.push(s)
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [visibleShifts])
 
-  const myPendingCount = myAssignments.filter(a =>
-    a.status === 'pending' && shifts.some(s => s.id === a.shift_id)).length
-  const myApprovedCount = myAssignments.filter(a =>
-    a.status === 'approved' && shifts.some(s => s.id === a.shift_id)).length
-  const myReserveCount = myAssignments.filter(a =>
-    a.status === 'reserve' && shifts.some(s => s.id === a.shift_id)).length
-
-  const weekLabel = `${weekDays[0].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${weekDays[5].toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`
+  const weekLabel = `${weekDays[0].getDate()} – ${weekDays[5].toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })}`
 
   if (loading) return <Spinner />
 
   if (periods.length === 0) {
     return (
       <div className="card p-16 text-center">
-        <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        </div>
         <h2 className="text-lg font-bold text-dark">Geen rooster beschikbaar</h2>
         <p className="text-gray-400 text-sm mt-2">Er is momenteel geen open inschrijving of gepubliceerd rooster.</p>
       </div>
@@ -172,16 +186,14 @@ export default function Beschikbaarheid() {
         <div>
           <h1 className="text-2xl font-bold text-dark">{signupOpen ? 'Inschrijven' : 'Rooster'}</h1>
           <p className="text-gray-400 text-sm mt-0.5">
-            {selectedPeriod
-              ? signupOpen
-                ? <>Diensten in <span className="font-semibold text-dark capitalize">{monthLabel(selectedPeriod.year, selectedPeriod.month)}</span> · klik op + om je aan te melden.</>
-                : <>Rooster van <span className="font-semibold text-dark capitalize">{monthLabel(selectedPeriod.year, selectedPeriod.month)}</span> · de inschrijving is gesloten. Ruilen kan via Mijn rooster.</>
-              : 'Klik op + om je aan te melden voor een dienst.'}
+            {signupOpen
+              ? 'Meld je aan voor de diensten die je wilt werken.'
+              : 'De inschrijving is gesloten. Ruilen kan via Mijn rooster.'}
           </p>
         </div>
         {periods.length > 1 && (
           <select
-            className="border border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-medium text-dark focus:outline-none"
+            className="border border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-medium text-dark focus:outline-none capitalize"
             value={selectedPeriod?.id}
             onChange={e => setSelectedPeriod(periods.find(p => p.id === e.target.value) || null)}
           >
@@ -190,261 +202,273 @@ export default function Beschikbaarheid() {
         )}
       </div>
 
-      {/* Deadline */}
-      {selectedPeriod?.availability_deadline && (
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-          </div>
-          <p className="text-sm text-gray-600">
-            Deadline:{' '}
-            <span className="font-semibold text-dark">
-              {new Date(selectedPeriod.availability_deadline).toLocaleDateString('nl-NL', {
-                day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
-              })}
-            </span>
-          </p>
-        </div>
-      )}
-
-      {/* Stats */}
-      {(myPendingCount > 0 || myApprovedCount > 0 || myReserveCount > 0) && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {myPendingCount > 0 && (
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-amber-400" />
-                <p className="text-xl font-bold text-dark">{myPendingCount}</p>
-              </div>
-              <p className="text-xs text-gray-400">Wacht op goedkeuring</p>
-            </div>
-          )}
-          {myApprovedCount > 0 && (
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                <p className="text-xl font-bold text-dark">{myApprovedCount}</p>
-              </div>
-              <p className="text-xs text-gray-400">Goedgekeurd</p>
-            </div>
-          )}
-          {myReserveCount > 0 && (
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-sky-400" />
-                <p className="text-xl font-bold text-dark">{myReserveCount}</p>
-              </div>
-              <p className="text-xs text-gray-400">Reservelijst</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Week navigation */}
-      <div className="flex items-center justify-between">
-        <button onClick={() => setWeekOffset(w => w - 1)} className="btn-ghost text-sm px-3 py-2">
-          ← Vorige
-        </button>
-        <div className="text-center">
-          {selectedPeriod && (
-            <p className="text-[10px] font-bold uppercase tracking-widest text-salmon-500 capitalize">
-              {monthLabel(selectedPeriod.year, selectedPeriod.month)}
+      {/* Open inschrijving-kaart */}
+      {signupOpen && selectedPeriod && (
+        <div className="card px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-dark capitalize">
+              {monthLabel(selectedPeriod.year, selectedPeriod.month)}-inschrijving is geopend
             </p>
-          )}
-          <p className="font-semibold text-dark text-sm">{weekLabel}</p>
-          {weekOffset !== monthHomeOffset && (
-            <button onClick={() => setWeekOffset(monthHomeOffset)} className="text-xs text-gray-400 hover:text-dark transition-colors mt-0.5">
-              Terug naar {selectedPeriod ? monthLabel(selectedPeriod.year, selectedPeriod.month).split(' ')[0] : 'begin'}
+            <p className="text-[13px] text-gray-400 mt-0.5">
+              Nog {availableCount} dienst{availableCount !== 1 ? 'en' : ''} beschikbaar
+              {selectedPeriod.availability_deadline && (
+                <> · sluit op {new Date(selectedPeriod.availability_deadline).toLocaleDateString('nl-NL', {
+                  day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+                })}</>
+              )}
+            </p>
+          </div>
+          {filter !== 'beschikbaar' && availableCount > 0 && (
+            <button onClick={() => setFilter('beschikbaar')}
+              className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--color-primary)' }}>
+              Bekijk beschikbare diensten →
             </button>
           )}
         </div>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="btn-ghost text-sm px-3 py-2">
-          Volgende →
-        </button>
+      )}
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <FilterChip active={filter === 'alle'} onClick={() => setFilter('alle')} label="Alle diensten" />
+        <FilterChip active={filter === 'beschikbaar'} onClick={() => setFilter('beschikbaar')}
+          label={`Beschikbaar${availableCount > 0 ? ` (${availableCount})` : ''}`} />
+        <FilterChip active={filter === 'mijn'} onClick={() => setFilter('mijn')}
+          label={`Mijn aanmeldingen${myCount > 0 ? ` (${myCount})` : ''}`} />
       </div>
 
-      {/* Weekly grid */}
-      <div className="card overflow-hidden">
-        {/* Day headers */}
-        <div className="grid grid-cols-7 bg-gray-50/60 border-b border-gray-100">
-          <div className="py-3 border-r border-gray-100" />
-          {weekDays.map(day => {
-            const iso = dateToISO(day)
-            const isToday = iso === dateToISO(today)
-            return (
-              <div key={iso} className="py-3 text-center border-l border-gray-100 first:border-0">
-                <p className={`text-[10px] font-bold uppercase tracking-widest ${isToday ? 'text-salmon-500' : 'text-gray-400'}`}>
-                  {day.toLocaleDateString('nl-NL', { weekday: 'short' })}
-                </p>
-                <p className={`text-sm font-bold mt-0.5 ${isToday ? 'text-salmon-500' : 'text-dark'}`}>
-                  {day.getDate()}
-                </p>
-              </div>
-            )
-          })}
+      {/* Weeknavigatie (alleen in weekweergave) */}
+      {weekView && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setWeekOffset(w => w - 1)} aria-label="Vorige week"
+              className="w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">‹</button>
+            <p className="font-semibold text-dark text-sm px-3 whitespace-nowrap">{weekLabel}</p>
+            <button onClick={() => setWeekOffset(w => w + 1)} aria-label="Volgende week"
+              className="w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">›</button>
+          </div>
+          {weekOffset !== monthHomeOffset && (
+            <button onClick={() => setWeekOffset(monthHomeOffset)}
+              className="text-sm font-semibold px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">
+              {monthHomeOffset === 0 ? 'Vandaag' : monthLabel(selectedPeriod!.year, selectedPeriod!.month).split(' ')[0]}
+            </button>
+          )}
         </div>
+      )}
 
-        {/* Shift rows: ochtend + middag */}
-        {(['ochtend', 'middag'] as const).map((shiftType, rowIdx) => (
-          <div key={shiftType} className={`grid grid-cols-7 ${rowIdx === 0 ? 'border-b border-gray-100' : ''}`}>
-            {/* Row label */}
-            <div className="flex items-center justify-center py-6 px-2 border-r border-gray-100 bg-gray-50/30">
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                shiftType === 'ochtend' ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'
-              }`}>
-                {shiftType === 'ochtend' ? 'Ochtend' : 'Middag'}
-              </span>
-            </div>
-
-            {/* Day cells */}
-            {weekDays.map(day => {
-              const iso = dateToISO(day)
-              const shift = (shiftGrid[iso] || {})[shiftType]
-              const myAssignment = shift ? myAssignments.find(a => a.shift_id === shift.id) : null
-              const isPast = day < today
-
-              if (!shift) {
+      {byDay.length === 0 ? (
+        <div className="card p-10 text-center">
+          <p className="text-gray-400 text-sm font-medium">
+            {filter === 'mijn' ? 'Je hebt nog geen aanmeldingen in deze maand.'
+              : filter === 'beschikbaar' ? 'Geen beschikbare diensten meer in deze maand.'
+              : 'Geen diensten in deze week.'}
+          </p>
+          {filter === 'mijn' && availableCount > 0 && (
+            <button onClick={() => setFilter('beschikbaar')} className="text-sm font-semibold mt-2" style={{ color: 'var(--color-primary)' }}>
+              Bekijk beschikbare diensten →
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Desktop: kolommen per dag (alleen weekweergave) */}
+          {weekView && (
+            <div className="hidden md:grid grid-cols-6 gap-3 items-start">
+              {weekDays.map(day => {
+                const iso = dateToISO(day)
+                const dayShifts = byDay.find(([d]) => d === iso)?.[1] || []
+                const isToday = iso === dateToISO(today)
                 return (
-                  <div key={iso} className="flex items-center justify-center border-l border-gray-100 min-h-[110px]">
-                    <span className="text-gray-200 text-xs">—</span>
+                  <div key={iso} className="space-y-2 min-w-0">
+                    <DayHeader day={day} isToday={isToday} />
+                    {dayShifts.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-gray-300 text-xs">—</div>
+                    ) : dayShifts.map(s => (
+                      <ShiftCard key={s.id} shift={s} mine={myByShift.get(s.id)} compact
+                        signupOpen={signupOpen} today={today} processing={processing}
+                        typeLabel={shiftTypeConfig(settings, s.shift_type).label}
+                        meId={profile?.id} onSignUp={signUp} onWithdraw={withdraw} />
+                    ))}
                   </div>
                 )
-              }
+              })}
+            </div>
+          )}
 
-              const isPending = myAssignment?.status === 'pending'
-              const isApproved = myAssignment?.status === 'approved'
-              const isReserve = myAssignment?.status === 'reserve'
-              const isFull = shift.open_spots <= 0 && !myAssignment
-
-              // Collega's die op deze dienst zijn ingeroosterd (goedgekeurd),
-              // zodat je ziet met wie je werkt en met wie je kunt ruilen.
-              const colleagues = (shift.assigned_students || [])
-                .filter(st => st.status === 'approved' && st.user_id !== profile?.id)
-
+          {/* Mobiel (en lijstfilters op elk formaat): verticale agenda */}
+          <div className={`${weekView ? 'md:hidden' : ''} space-y-5`}>
+            {byDay.map(([iso, dayShifts]) => {
+              const day = new Date(iso + 'T00:00:00')
+              const isToday = iso === dateToISO(today)
               return (
-                <div key={iso} className="flex flex-col items-center justify-between gap-1.5 py-3 px-1.5 border-l border-gray-100 min-h-[120px]">
-                  {/* Tijd + plekken */}
-                  <div className="text-center">
-                    <p className="text-[10px] text-gray-400 font-semibold leading-none">
-                      {shift.start_time.slice(0, 5)}
-                    </p>
-                    {signupOpen && !isApproved && !isPending && !isReserve && !isFull && !isPast && (
-                      <p className="text-[9px] text-gray-300 mt-0.5 leading-none">
-                        {shift.open_spots} plek{shift.open_spots !== 1 ? 'ken' : ''}
-                      </p>
-                    )}
+                <div key={iso}>
+                  <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${isToday ? '' : 'text-gray-400'}`}
+                    style={isToday ? { color: 'var(--color-primary)' } : {}}>
+                    {day.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {isToday && ' · vandaag'}
+                  </p>
+                  <div className={`grid gap-2 ${weekView ? '' : 'sm:grid-cols-2'}`}>
+                    {dayShifts.map(s => (
+                      <ShiftCard key={s.id} shift={s} mine={myByShift.get(s.id)}
+                        signupOpen={signupOpen} today={today} processing={processing}
+                        typeLabel={shiftTypeConfig(settings, s.shift_type).label}
+                        meId={profile?.id} onSignUp={signUp} onWithdraw={withdraw} />
+                    ))}
                   </div>
-
-                  {/* Wie werkt er */}
-                  {colleagues.length > 0 ? (
-                    <div className="flex flex-col items-center gap-1 w-full min-w-0">
-                      {colleagues.map(st => (
-                        <span
-                          key={st.user_id}
-                          title={st.full_name || st.email}
-                          className="text-[9px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full leading-none truncate max-w-full"
-                        >
-                          {(st.full_name || st.email).split(' ')[0]}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      isApproved ? 'bg-indigo-300' :
-                      isPending  ? 'bg-amber-300' :
-                      isReserve  ? 'bg-sky-300' :
-                      isFull || isPast ? 'bg-gray-200' :
-                      'bg-emerald-400'
-                    }`} />
-                  )}
-
-                  {/* Actie */}
-                  {isApproved && (
-                    <span className="text-[10px] font-bold text-indigo-400 bg-indigo-50 px-2 py-1 rounded-lg w-full text-center leading-none">
-                      Ingepland
-                    </span>
-                  )}
-                  {isPending && myAssignment && (
-                    <button
-                      onClick={() => withdraw(myAssignment.id)}
-                      disabled={processing === myAssignment.id}
-                      className="text-[10px] font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50 px-2 py-1 rounded-lg w-full text-center leading-none"
-                    >
-                      {processing === myAssignment.id ? '...' : 'Afmelden'}
-                    </button>
-                  )}
-                  {isReserve && myAssignment && (
-                    <div className="flex flex-col items-center gap-1 w-full">
-                      <span
-                        className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded-lg w-full text-center leading-none"
-                        title={canLeaveReserve(shift) ? undefined : 'Afmelden kan tot 24 uur voor de start van de dienst'}
-                      >
-                        Reserve
-                      </span>
-                      {canLeaveReserve(shift) && !isPast && (
-                        <button
-                          onClick={() => confirm('Wil je jezelf van de reservelijst voor deze dienst afmelden?') && withdraw(myAssignment.id)}
-                          disabled={processing === myAssignment.id}
-                          className="text-[10px] font-semibold text-gray-400 hover:text-sky-600 underline underline-offset-2 transition-colors disabled:opacity-50 leading-none"
-                        >
-                          {processing === myAssignment.id ? '...' : 'Afmelden'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {signupOpen && !myAssignment && !isFull && !isPast && (
-                    <button
-                      onClick={() => signUp(shift.id)}
-                      disabled={processing === shift.id}
-                      className="text-[10px] font-bold text-white py-1.5 rounded-lg w-full text-center disabled:opacity-50 transition-opacity"
-                      style={{ backgroundColor: 'var(--color-primary)' }}
-                    >
-                      {processing === shift.id ? '...' : 'Aanmelden'}
-                    </button>
-                  )}
-                  {signupOpen && (isFull || (isPast && !myAssignment)) && (
-                    <span className="text-[10px] text-gray-300 font-medium w-full text-center leading-none">
-                      {isFull ? 'vol' : '—'}
-                    </span>
-                  )}
                 </div>
               )
             })}
           </div>
-        ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// Eén dienst als duidelijk interactief object: status in tekst,
+// capaciteit zichtbaar, één actie per kaart.
+// ------------------------------------------------------------
+
+function ShiftCard({ shift, mine, signupOpen, today, processing, typeLabel, meId, onSignUp, onWithdraw, compact }: {
+  shift: ShiftWithAssignments
+  mine?: Assignment
+  signupOpen: boolean
+  today: Date
+  processing: string | null
+  typeLabel: string
+  meId?: string
+  onSignUp: (shiftId: string) => void
+  onWithdraw: (assignmentId: string) => void
+  compact?: boolean
+}) {
+  const isPast = new Date(shift.shift_date + 'T00:00:00') < today
+  const isApproved = mine?.status === 'approved'
+  const isPending = mine?.status === 'pending'
+  const isReserve = mine?.status === 'reserve'
+  const busy = processing === shift.id || processing === mine?.id
+
+  const colleagues = (shift.assigned_students || [])
+    .filter(st => st.status === 'approved' && st.user_id !== meId)
+    .map(st => (st.full_name || st.email).split(' ')[0])
+  const reserveCount = (shift.assigned_students || []).filter(st => st.status === 'reserve').length
+  const isFull = shift.open_spots <= 0
+
+  return (
+    <div className={`bg-white rounded-xl border p-3.5 ${isPast && !mine ? 'opacity-50' : ''} ${
+      isApproved ? 'border-emerald-100' : isPending ? 'border-amber-100' : isReserve ? 'border-sky-100' : 'border-gray-100'
+    }`}>
+      {/* Type + tijd */}
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-dark truncate">{typeLabel}</p>
+        <p className="text-xs text-gray-400 flex-shrink-0">
+          {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)}
+        </p>
       </div>
 
-      {/* No shifts this week */}
-      {weekShifts.length === 0 && (
-        <div className="card p-10 text-center">
-          <p className="text-gray-400 text-sm font-medium">Geen diensten in deze week</p>
-          <p className="text-gray-300 text-xs mt-1">
-            Navigeer naar een week in{' '}
-            {selectedPeriod ? monthLabel(selectedPeriod.year, selectedPeriod.month) : 'de periode'}.
-          </p>
-        </div>
-      )}
+      {/* Capaciteit + collega's */}
+      <div className={`mt-1.5 ${compact ? 'min-h-[34px]' : ''}`}>
+        <p className="text-xs text-gray-400">
+          <PersonIcon className="w-3 h-3 inline -mt-0.5 mr-1" />
+          {shift.assigned_count} / {shift.max_students} plek{shift.max_students !== 1 ? 'ken' : ''}
+          {reserveCount > 0 && <span> · {reserveCount} reserve</span>}
+        </p>
+        {colleagues.length > 0 && (
+          <p className="text-xs text-gray-500 font-medium truncate mt-0.5">{colleagues.join(' · ')}</p>
+        )}
+      </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs">
-        <span className="flex items-center gap-1.5 text-gray-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-300 inline-block" /> Plek vrij
-        </span>
-        <span className="flex items-center gap-1.5 text-gray-400">
-          <span className="w-2 h-2 rounded-full bg-amber-300 inline-block" /> Aangemeld
-        </span>
-        <span className="flex items-center gap-1.5 text-gray-400">
-          <span className="w-2 h-2 rounded-full bg-indigo-300 inline-block" /> Ingeroosterd
-        </span>
-        <span className="flex items-center gap-1.5 text-gray-400">
-          <span className="w-2 h-2 rounded-full bg-sky-300 inline-block" /> Reservelijst
-        </span>
-        <span className="flex items-center gap-1.5 text-gray-400">
-          <span className="text-[9px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full leading-none">Naam</span>
-          Collega op deze dienst
-        </span>
+      {/* Status + actie (tekst, niet alleen kleur) */}
+      <div className="mt-2.5">
+        {isApproved && (
+          <p className="text-xs font-semibold text-emerald-600">✓ Ingeroosterd</p>
+        )}
+
+        {isPending && mine && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-amber-600 leading-tight">
+              Aangemeld<span className="block font-normal text-amber-500/80">wacht op goedkeuring</span>
+            </p>
+            <button onClick={() => onWithdraw(mine.id)} disabled={busy}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50">
+              {busy ? '...' : 'Afmelden'}
+            </button>
+          </div>
+        )}
+
+        {isReserve && mine && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-sky-600 leading-tight">
+              Reservelijst<span className="block font-normal text-sky-500/80">we benaderen je bij een plek</span>
+            </p>
+            {canLeaveReserve(shift) && !isPast && (
+              <button
+                onClick={() => confirm('Wil je jezelf van de reservelijst voor deze dienst afmelden?') && onWithdraw(mine.id)}
+                disabled={busy}
+                className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50">
+                {busy ? '...' : 'Afmelden'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {!mine && !isPast && signupOpen && !isFull && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-emerald-600">
+              {shift.open_spots === 1 ? '1 plek beschikbaar' : `${shift.open_spots} plekken beschikbaar`}
+            </p>
+            <button onClick={() => onSignUp(shift.id)} disabled={busy}
+              className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: 'var(--color-primary)' }}>
+              {busy ? '...' : '+ Aanmelden'}
+            </button>
+          </div>
+        )}
+
+        {!mine && !isPast && signupOpen && isFull && (
+          <p className="text-xs font-semibold text-gray-400">Vol</p>
+        )}
+
+        {!mine && (isPast || !signupOpen) && (
+          <p className="text-xs text-gray-300">{isPast ? 'Geweest' : isFull ? 'Vol' : 'Inschrijving gesloten'}</p>
+        )}
       </div>
     </div>
+  )
+}
+
+function DayHeader({ day, isToday }: { day: Date; isToday: boolean }) {
+  return (
+    <div className="text-center py-1.5">
+      <p className={`text-[10px] font-bold uppercase tracking-widest ${isToday ? '' : 'text-gray-400'}`}
+        style={isToday ? { color: 'var(--color-primary)' } : {}}>
+        {day.toLocaleDateString('nl-NL', { weekday: 'short' })}
+      </p>
+      <p className={`text-sm font-bold ${isToday ? '' : 'text-dark'}`} style={isToday ? { color: 'var(--color-primary)' } : {}}>
+        {day.getDate()}
+      </p>
+    </div>
+  )
+}
+
+function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick}
+      className={`text-sm font-medium px-3.5 py-2 rounded-xl border transition-colors ${
+        active
+          ? 'text-white border-transparent'
+          : 'bg-white border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300'
+      }`}
+      style={active ? { backgroundColor: 'var(--color-dark)' } : {}}>
+      {label}
+    </button>
+  )
+}
+
+function PersonIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+    </svg>
   )
 }
 
