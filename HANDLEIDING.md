@@ -509,24 +509,26 @@ toevoegen/wijzigen/verwijderen en alle stappen van ruilverzoeken.
 
 ## B14. Instellingen
 
-Via de tegel **Instellingen** op het beheerpaneel zijn de regels van de
-applicatie aan te passen, zonder dat er een ontwikkelaar aan te pas komt:
+Via de tegel **Instellingen** op het beheerpaneel pas je de regels van de
+applicatie aan, zonder dat er een ontwikkelaar aan te pas komt. Het scherm
+heeft een navigatie met secties (elk met een eigen adres), een zoekveld en
+bovenaan een **organisatie-status** die toont wat er nog niet is ingesteld:
 
-- **Organisatie** — naam, portal-URL, toegestaan e-maildomein (wie kan
-  inloggen; server-side afgedwongen), het support-adres in de voettekst en
-  het label van Google Agenda-afspraken.
-- **E-mail** — afzendernaam en -adres van alle automatische mails.
-- **Kleuren** — de primaire en donkere huisstijlkleur.
-- **Roosterregels** — roosterbare dagen, standaard aantal plekken per
-  dienst, éénpersoonsdagen (nu wo + za) en de maandlimiet-factor
-  (contractmaximum × factor).
-- **Loonregels** — toeslagdagen en hun naam in de exports, en de
-  onbetaalde pauze (aan/uit + tijden).
-- **Diensttijden** — labels en standaardtijden van ochtend/middag en de
-  vroeg/laat-varianten voor de tijdverdeling.
+- **Algemeen** — organisatienaam, portal-adres en supportadres.
+- **Huisstijl** — de primaire en donkere kleur en het agenda-label, met een
+  live voorbeeld dat direct meekleurt.
+- **Rooster** — roosterbare dagen (dagkaarten), **capaciteit per weekdag**
+  (bijv. ma 2 · wo 1 · za 1) en de maximale inzet per maand, met een
+  rekenvoorbeeld.
+- **Diensten** — per dagdeel de naam en de standaard-, vroeg- en laattijden.
+- **Loon & uren** — toeslagdagen + naam in de exports, en de pauze bij een
+  volledige dag (duur + automatisch aftrekken aan/uit).
+- **E-mail** — afzendernaam en -adres, met een live mailvoorbeeld.
+- **Beveiliging** — het toegestane e-maildomein (server-side afgedwongen).
 
-Wijzigingen gelden direct voor alle schermen, exports en e-mails.
-Nieuwe diensttijden gelden alleen voor diensten die je daarna aanmaakt.
+Wijzigingen gelden direct voor alle schermen, exports en e-mails, en worden
+vastgelegd in het **logboek** (wie, wanneer, welke velden). Nieuwe
+diensttijden en capaciteiten gelden voor diensten die je daarna aanmaakt.
 
 > ⚠️ Pas de **loonregels** (pauze, toeslagdagen, maandlimiet) niet
 > halverwege een maand aan zonder overleg met de financiële
