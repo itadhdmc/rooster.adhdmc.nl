@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useSettings, shiftTypeConfig } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
-import { RosterPeriod, ShiftWithAssignments, Assignment } from '../types'
+import { RosterPeriod, ShiftWithAssignments, Assignment, AssignmentWithShiftJoin } from '../types'
 import { dateToISO, monthLabel } from '../utils/dates'
+import { effectiveShift } from '../utils/shiftTimes'
 
 function getWeekDays(weekOffset: number): Date[] {
   const now = new Date()
@@ -51,11 +52,15 @@ export default function Beschikbaarheid() {
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null)
   const [shifts, setShifts] = useState<ShiftWithAssignments[]>([])
-  const [myAssignments, setMyAssignments] = useState<Assignment[]>([])
+  const [myAssignments, setMyAssignments] = useState<AssignmentWithShiftJoin[]>([])
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [weekOffset, setWeekOffset] = useState(0)
   const [filter, setFilter] = useState<Filter>('alle')
+  // Bulk-aanmelden: geselecteerde dienst-id's.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [submitting, setSubmitting] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
 
   useEffect(() => { loadPeriods() }, [])
   useEffect(() => { if (selectedPeriod && profile) loadShifts() }, [selectedPeriod, profile])
@@ -65,6 +70,7 @@ export default function Beschikbaarheid() {
     const now = new Date()
     const isCurrentMonth = selectedPeriod.year === now.getFullYear() && selectedPeriod.month === now.getMonth() + 1
     setWeekOffset(isCurrentMonth ? 0 : getWeekOffsetForMonth(selectedPeriod.year, selectedPeriod.month))
+    setSelected(new Set())
   }, [selectedPeriod?.id])
 
   async function loadPeriods() {
@@ -91,24 +97,43 @@ export default function Beschikbaarheid() {
         .eq('period_id', selectedPeriod.id)
         .order('shift_date').order('shift_type'),
       supabase.from('assignments')
-        .select('*')
+        .select('*, shifts(*)')
         .eq('user_id', profile.id),
     ])
     setShifts(s || [])
-    setMyAssignments(a || [])
+    setMyAssignments((a || []) as AssignmentWithShiftJoin[])
   }
 
-  async function signUp(shiftId: string) {
-    if (!profile) return
-    setProcessing(shiftId)
-    const { error } = await supabase.from('assignments').insert({
+  function toggleSelect(shiftId: string) {
+    setSuccessMsg('')
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(shiftId)) next.delete(shiftId)
+      else next.add(shiftId)
+      return next
+    })
+  }
+
+  // Alle geselecteerde diensten in één keer aanmelden.
+  async function submitSelection() {
+    if (!profile || selected.size === 0) return
+    setSubmitting(true)
+    const rows = [...selected].map(shiftId => ({
       shift_id: shiftId,
       user_id: profile.id,
       status: 'pending',
-    })
-    if (error) alert('Aanmelden mislukt: ' + error.message)
+    }))
+    const { error } = await supabase.from('assignments').insert(rows)
+    setSubmitting(false)
+    if (error) {
+      alert('Aanmelden mislukt: ' + error.message)
+      await loadShifts()
+      return
+    }
+    const count = selected.size
+    setSelected(new Set())
+    setSuccessMsg(`${count} aanmelding${count !== 1 ? 'en' : ''} verstuurd — de planning beoordeelt ze.`)
     await loadShifts()
-    setProcessing(null)
   }
 
   async function withdraw(assignmentId: string) {
@@ -132,6 +157,23 @@ export default function Beschikbaarheid() {
     for (const a of myAssignments) map.set(a.shift_id, a)
     return map
   }, [myAssignments])
+
+  // Uren die je in deze periode al hebt (aangemeld + ingepland), met
+  // afwijkende werktijden verrekend — zelfde basis als de maandlimiet.
+  const committedHours = useMemo(() => myAssignments.reduce((sum, a) => {
+    if (!a.shifts || a.shifts.period_id !== selectedPeriod?.id) return sum
+    if (a.status !== 'pending' && a.status !== 'approved') return sum
+    return sum + Number(effectiveShift(a.shifts, a).duration_hours)
+  }, 0), [myAssignments, selectedPeriod?.id])
+
+  const selectionHours = useMemo(() =>
+    shifts.filter(s => selected.has(s.id)).reduce((n, s) => n + Number(s.duration_hours), 0),
+    [shifts, selected])
+
+  const monthMax = profile ? Math.round(Number(profile.contract_max_hours) * settings.monthly_cap_factor * 10) / 10 : 0
+  const projectedHours = committedHours + selectionHours
+  const overMax = monthMax > 0 && projectedHours > monthMax
+  const nlNum = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
 
   function matchesFilter(s: ShiftWithAssignments): boolean {
     const mine = myByShift.get(s.id)
@@ -180,7 +222,7 @@ export default function Beschikbaarheid() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className={`space-y-5 ${selected.size > 0 ? 'pb-28' : ''}`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -217,6 +259,12 @@ export default function Beschikbaarheid() {
                 })}</>
               )}
             </p>
+            {monthMax > 0 && (
+              <p className="text-[13px] text-gray-400 mt-1">
+                Jij staat op <span className="font-semibold text-dark">{nlNum(committedHours)}</span> van
+                max {nlNum(monthMax)} uur deze maand <span className="text-gray-300">(aangemeld + ingepland)</span>
+              </p>
+            )}
           </div>
           {filter !== 'beschikbaar' && availableCount > 0 && (
             <button onClick={() => setFilter('beschikbaar')}
@@ -224,6 +272,13 @@ export default function Beschikbaarheid() {
               Bekijk beschikbare diensten →
             </button>
           )}
+        </div>
+      )}
+
+      {/* Succes na bulk-aanmelden */}
+      {successMsg && (
+        <div className="card px-5 py-3.5 border-emerald-100">
+          <p className="text-sm font-semibold text-emerald-600">✓ {successMsg}</p>
         </div>
       )}
 
@@ -286,7 +341,8 @@ export default function Beschikbaarheid() {
                       <ShiftCard key={s.id} shift={s} mine={myByShift.get(s.id)} compact
                         signupOpen={signupOpen} today={today} processing={processing}
                         typeLabel={shiftTypeConfig(settings, s.shift_type).label}
-                        meId={profile?.id} onSignUp={signUp} onWithdraw={withdraw} />
+                        meId={profile?.id} isSelected={selected.has(s.id)}
+                        onToggle={toggleSelect} onWithdraw={withdraw} />
                     ))}
                   </div>
                 )
@@ -311,7 +367,8 @@ export default function Beschikbaarheid() {
                       <ShiftCard key={s.id} shift={s} mine={myByShift.get(s.id)}
                         signupOpen={signupOpen} today={today} processing={processing}
                         typeLabel={shiftTypeConfig(settings, s.shift_type).label}
-                        meId={profile?.id} onSignUp={signUp} onWithdraw={withdraw} />
+                        meId={profile?.id} isSelected={selected.has(s.id)}
+                        onToggle={toggleSelect} onWithdraw={withdraw} />
                     ))}
                   </div>
                 </div>
@@ -319,6 +376,35 @@ export default function Beschikbaarheid() {
             })}
           </div>
         </>
+      )}
+
+      {/* Selectiebalk: bulk-aanmelden met live urencontext */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-4 inset-x-4 sm:inset-x-0 z-40 sm:flex sm:justify-center pointer-events-none">
+          <div className="pointer-events-auto bg-white rounded-2xl shadow-2xl border border-gray-100 px-5 py-4 flex items-center gap-4 sm:gap-6 max-w-xl w-full sm:w-auto">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-dark">
+                {selected.size} dienst{selected.size !== 1 ? 'en' : ''} geselecteerd · {nlNum(selectionHours)}u
+              </p>
+              <p className={`text-xs mt-0.5 ${overMax ? 'font-semibold text-rose-500' : 'text-gray-400'}`}>
+                {overMax
+                  ? `Hiermee kom je op ${nlNum(projectedHours)}u — boven je maandmaximum van ${nlNum(monthMax)}u`
+                  : monthMax > 0
+                  ? `Totaal deze maand: ${nlNum(projectedHours)} van max ${nlNum(monthMax)}u`
+                  : `Totaal deze maand: ${nlNum(projectedHours)}u`}
+              </p>
+            </div>
+            <button onClick={() => setSelected(new Set())}
+              className="text-xs font-medium text-gray-400 hover:text-dark transition-colors flex-shrink-0">
+              Wissen
+            </button>
+            <button onClick={submitSelection} disabled={submitting}
+              className="text-sm font-bold text-white px-4 py-2.5 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+              style={{ backgroundColor: 'var(--color-primary)' }}>
+              {submitting ? 'Versturen…' : 'Aanmelden'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -329,7 +415,7 @@ export default function Beschikbaarheid() {
 // capaciteit zichtbaar, één actie per kaart.
 // ------------------------------------------------------------
 
-function ShiftCard({ shift, mine, signupOpen, today, processing, typeLabel, meId, onSignUp, onWithdraw, compact }: {
+function ShiftCard({ shift, mine, signupOpen, today, processing, typeLabel, meId, isSelected, onToggle, onWithdraw, compact }: {
   shift: ShiftWithAssignments
   mine?: Assignment
   signupOpen: boolean
@@ -337,7 +423,8 @@ function ShiftCard({ shift, mine, signupOpen, today, processing, typeLabel, meId
   processing: string | null
   typeLabel: string
   meId?: string
-  onSignUp: (shiftId: string) => void
+  isSelected: boolean
+  onToggle: (shiftId: string) => void
   onWithdraw: (assignmentId: string) => void
   compact?: boolean
 }) {
@@ -354,9 +441,11 @@ function ShiftCard({ shift, mine, signupOpen, today, processing, typeLabel, meId
   const isFull = shift.open_spots <= 0
 
   return (
-    <div className={`bg-white rounded-xl border p-3.5 ${isPast && !mine ? 'opacity-50' : ''} ${
-      isApproved ? 'border-emerald-100' : isPending ? 'border-amber-100' : isReserve ? 'border-sky-100' : 'border-gray-100'
-    }`}>
+    <div
+      className={`bg-white rounded-xl border p-3.5 transition-colors ${isPast && !mine ? 'opacity-50' : ''} ${
+        isApproved ? 'border-emerald-100' : isPending ? 'border-amber-100' : isReserve ? 'border-sky-100' : 'border-gray-100'
+      }`}
+      style={isSelected ? { borderColor: 'var(--color-primary)', boxShadow: '0 0 0 1px var(--color-primary)' } : {}}>
       {/* Type + tijd */}
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-semibold text-dark truncate">{typeLabel}</p>
@@ -416,10 +505,14 @@ function ShiftCard({ shift, mine, signupOpen, today, processing, typeLabel, meId
             <p className="text-xs font-medium text-emerald-600">
               {shift.open_spots === 1 ? '1 plek beschikbaar' : `${shift.open_spots} plekken beschikbaar`}
             </p>
-            <button onClick={() => onSignUp(shift.id)} disabled={busy}
-              className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: 'var(--color-primary)' }}>
-              {busy ? '...' : '+ Aanmelden'}
+            <button onClick={() => onToggle(shift.id)} disabled={busy}
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 ${
+                isSelected ? 'text-white' : 'text-white hover:opacity-90'
+              }`}
+              style={isSelected
+                ? { backgroundColor: 'var(--color-dark)' }
+                : { backgroundColor: 'var(--color-primary)' }}>
+              {isSelected ? '✓ Geselecteerd' : '+ Aanmelden'}
             </button>
           </div>
         )}
