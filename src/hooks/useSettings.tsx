@@ -31,6 +31,8 @@ export interface AppSettings {
   single_staff_weekdays: number[]
   roster_weekdays: number[]
   default_max_students: number
+  // Capaciteit (plekken per dienst) per weekdag, ma (index 0) t/m zo.
+  day_capacities: number[]
   shift_types: ShiftTypeConfig[]
 }
 
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   single_staff_weekdays: [3, 6],
   roster_weekdays: [1, 2, 3, 4, 5, 6],
   default_max_students: 2,
+  day_capacities: [2, 2, 1, 2, 2, 1, 2],
   shift_types: [
     { key: 'ochtend', label: 'Ochtend', start: '08:30', end: '12:30', early: { start: '08:00', end: '12:00' }, late: { start: '08:30', end: '12:30' } },
     { key: 'middag', label: 'Middag', start: '12:00', end: '17:30', early: { start: '12:00', end: '17:00' }, late: { start: '12:30', end: '17:30' } },
@@ -165,7 +168,15 @@ export function isSingleStaffDate(s: AppSettings, d: Date): boolean {
 }
 
 export function maxStudentsFor(s: AppSettings, d: Date): number {
+  const cap = s.day_capacities?.[isoWeekday(d) - 1]
+  if (typeof cap === 'number' && cap > 0) return cap
+  // Fallback op het oude model (zolang migratie 0024 nog niet draait).
   return isSingleStaffDate(s, d) ? 1 : s.default_max_students
+}
+
+// Publieke tint-helper voor previews (zelfde mixlogica als het thema).
+export function tint(hex: string, withColor: 'white' | 'black', weight: number): string {
+  return mix(hex, withColor, weight)
 }
 
 export function shiftTypeConfig(s: AppSettings, key: string): ShiftTypeConfig {

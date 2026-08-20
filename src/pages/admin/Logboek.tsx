@@ -13,6 +13,7 @@ const ACTION_STYLE: Record<string, { bg: string; dot: string; label: string }> =
   aanwezigheid: { bg: 'bg-orange-50',  dot: 'bg-orange-400',  label: 'Aanwezigheid' },
   dienst:       { bg: 'bg-gray-100',   dot: 'bg-gray-400',    label: 'Dienst' },
   ruil:         { bg: 'bg-purple-50',  dot: 'bg-purple-400',  label: 'Ruil' },
+  instellingen: { bg: 'bg-slate-100',  dot: 'bg-slate-400',   label: 'Instellingen' },
 }
 
 const PAGE_SIZE = 100

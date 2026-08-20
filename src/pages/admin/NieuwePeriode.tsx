@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, dateToISO, monthLabel } from '../../utils/dates'
@@ -18,12 +18,9 @@ export default function NieuwePeriode() {
   const [deadline, setDeadline] = useState('')
   const [includeOchtend, setIncludeOchtend] = useState(true)
   const [includeMiddag, setIncludeMiddag] = useState(true)
-  const [maxStudents, setMaxStudents] = useState(settings.default_max_students)
   const [includeSaturday, setIncludeSaturday] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => { setMaxStudents(settings.default_max_students) }, [settings.default_max_students])
 
   // Diensttypes met instelbare tijden (uit app_settings).
   const shiftTemplates = settings.shift_types.map(t => ({
@@ -42,9 +39,6 @@ export default function NieuwePeriode() {
     (t.shift_type === 'middag' && includeMiddag)
   )
   const totalShifts = days.length * selectedTypes.length
-  const singleStaffLabel = settings.single_staff_weekdays
-    .filter(d => d !== 6 || includeSaturday)
-    .map(d => DAY_PLURAL[d]).join(' en ')
 
   async function handleCreate() {
     if (!includeOchtend && !includeMiddag) { setError('Selecteer minimaal één diensttype.'); return }
@@ -77,8 +71,8 @@ export default function NieuwePeriode() {
           start_time: template.start_time,
           end_time: template.end_time,
           duration_hours: template.duration_hours,
-          // Eénpersoonsdagen (instelbaar) altijd max 1.
-          max_students: maxStudentsFor(settings, day) === 1 ? 1 : maxStudents,
+          // Capaciteit per weekdag uit de instellingen.
+          max_students: maxStudentsFor(settings, day),
         })
       }
     }
@@ -176,22 +170,19 @@ export default function NieuwePeriode() {
           </div>
         </div>
 
-        {/* Max studenten */}
+        {/* Capaciteit per dag (uit Instellingen) */}
         <div>
-          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Studenten per dienst</label>
-          <div className="flex items-center gap-3">
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={maxStudents}
-              onChange={e => setMaxStudents(Number(e.target.value))}
-              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-20 focus:outline-none focus:border-salmon-400"
-            />
-            <span className="text-sm text-gray-400">student(en) per dienst</span>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Plekken per dienst</label>
+          <div className="flex flex-wrap gap-1.5">
+            {settings.roster_weekdays.map(d => (
+              <span key={d} className="text-xs font-semibold text-gray-500 bg-gray-100 px-2.5 py-1.5 rounded-lg">
+                {DAY_PLURAL[d].slice(0, 2)} {settings.day_capacities[d - 1] ?? 2}
+              </span>
+            ))}
           </div>
           <p className="text-xs text-gray-400 mt-1.5">
-            {singleStaffLabel ? `${singleStaffLabel.charAt(0).toUpperCase()}${singleStaffLabel.slice(1)} zijn altijd voor maar 1 persoon (instelbaar via Instellingen).` : 'Geen éénpersoonsdagen ingesteld.'}
+            De capaciteit per dag komt uit{' '}
+            <Link to="/admin/instellingen/rooster" className="underline hover:text-dark">Instellingen → Rooster</Link>.
           </p>
         </div>
 
@@ -217,7 +208,7 @@ export default function NieuwePeriode() {
         <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: 'var(--color-primary-50)', color: 'var(--color-primary)' }}>
           {totalShifts} diensten worden aangemaakt voor {monthLabel(year, month)}
           {includeOchtend && includeMiddag && ' (ochtend + middag per dag)'}
-          {singleStaffLabel ? `. ${singleStaffLabel.charAt(0).toUpperCase()}${singleStaffLabel.slice(1)} krijgen max 1 persoon.` : '.'}
+          {'. De capaciteit per dag volgt de instellingen.'}
         </div>
 
         {error && (

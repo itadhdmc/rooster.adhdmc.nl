@@ -60,6 +60,7 @@ function AppRoutes() {
       <Route path="/admin/financien" element={<ProtectedRoute adminOnly><Financien /></ProtectedRoute>} />
       <Route path="/admin/logboek" element={<ProtectedRoute adminOnly><Logboek /></ProtectedRoute>} />
       <Route path="/admin/instellingen" element={<ProtectedRoute adminOnly><Instellingen /></ProtectedRoute>} />
+      <Route path="/admin/instellingen/:section" element={<ProtectedRoute adminOnly><Instellingen /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
