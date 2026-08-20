@@ -3,6 +3,10 @@ import { Shift } from '../types'
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
 const TIMEZONE = 'Europe/Amsterdam'
 
+// Historisch label: bestaande agenda-items zijn hiermee aangemaakt, dus de
+// opruimlogica blijft dit altijd herkennen — ook als het label is aangepast.
+const LEGACY_LABEL = 'ADHDMC Zorgadministratie'
+
 // Vast, herleidbaar agenda-id per toewijzing. Hierdoor maakt opnieuw
 // synchroniseren NOOIT een duplicaat: Google weigert een tweede afspraak met
 // hetzelfde id (HTTP 409). Toegestane tekens zijn a-v en 0-9, dus de hex van
@@ -11,10 +15,10 @@ export function eventIdFor(assignmentId: string): string {
   return 'adhdmc' + assignmentId.replace(/-/g, '')
 }
 
-function eventBody(shift: Shift) {
+function eventBody(shift: Shift, label: string) {
   const title = shift.shift_type === 'ochtend'
-    ? 'Ochtenddienst – ADHDMC Zorgadministratie'
-    : 'Middagdienst – ADHDMC Zorgadministratie'
+    ? `Ochtenddienst – ${label}`
+    : `Middagdienst – ${label}`
 
   return {
     summary: title,
@@ -34,13 +38,13 @@ function eventBody(shift: Shift) {
 
 // Maakt (of werkt bij) precies één agenda-afspraak voor een toewijzing.
 // Geeft het vaste agenda-id terug, of null bij een fout.
-export async function createCalendarEvent(shift: Shift, token: string, assignmentId: string): Promise<string | null> {
+export async function createCalendarEvent(shift: Shift, token: string, assignmentId: string, label: string = LEGACY_LABEL): Promise<string | null> {
   const id = eventIdFor(assignmentId)
   try {
     const res = await fetch(CALENDAR_API, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...eventBody(shift) }),
+      body: JSON.stringify({ id, ...eventBody(shift, label) }),
     })
     if (res.ok) return id
     // 409 = bestaat al → geen duplicaat. Werk hem bij zodat de tijden kloppen.
@@ -48,7 +52,7 @@ export async function createCalendarEvent(shift: Shift, token: string, assignmen
       await fetch(`${CALENDAR_API}/${id}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventBody(shift)),
+        body: JSON.stringify(eventBody(shift, label)),
       })
       return id
     }
@@ -78,6 +82,7 @@ export async function repairMonthEvents(
   approved: { id: string; shift: Shift }[],
   year: number,
   month: number,
+  label: string = LEGACY_LABEL,
 ): Promise<number> {
   const expectedIds = new Set(approved.map(a => eventIdFor(a.id)))
   const mm = String(month).padStart(2, '0')
@@ -89,13 +94,13 @@ export async function repairMonthEvents(
 
   let removed = 0
   try {
-    const url = `${CALENDAR_API}?timeMin=${timeMin}&timeMax=${timeMax}&q=Zorgadministratie&singleEvents=true&maxResults=2500`
+    const url = `${CALENDAR_API}?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&maxResults=2500`
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     if (res.ok) {
       const data = await res.json()
       for (const item of (data.items || [])) {
         const summary: string = item.summary || ''
-        if (!summary.includes('ADHDMC Zorgadministratie')) continue
+        if (!summary.includes(label) && !summary.includes(LEGACY_LABEL)) continue
         // Alles wat niet het verwachte (vaste) id heeft is een duplicaat.
         if (!expectedIds.has(item.id)) {
           await deleteCalendarEvent(item.id, token)
@@ -109,7 +114,7 @@ export async function repairMonthEvents(
 
   // Zorg dat elke toewijzing precies één afspraak heeft (met vast id).
   for (const a of approved) {
-    await createCalendarEvent(a.shift, token, a.id)
+    await createCalendarEvent(a.shift, token, a.id, label)
   }
   return removed
 }

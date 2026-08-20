@@ -92,7 +92,7 @@ export default function AdminDashboard() {
 
       {/* Hero header */}
       <div className="rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-        style={{ backgroundColor: '#3c3c3b' }}>
+        style={{ backgroundColor: 'var(--color-dark)' }}>
         <div>
           <p className="text-white/40 text-xs font-semibold uppercase tracking-widest mb-1 capitalize">{today}</p>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Beheerpaneel</h1>
@@ -101,7 +101,7 @@ export default function AdminDashboard() {
         <Link
           to="/admin/periodes/nieuw"
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors flex-shrink-0"
-          style={{ backgroundColor: '#f87369', color: '#fff' }}
+          style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -121,10 +121,10 @@ export default function AdminDashboard() {
       {/* Quick links */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <QuickLink to="/admin/studenten" title="Medewerkers" desc="Beheer rollen en contracturen" icon={<UsersIcon />} accent="#6366f1" />
-        <QuickLink to="/admin/beschikbaarheid" title="Beschikbaarheid" desc="Ingegeven beschikbaarheid" icon={<ListIcon />} accent="#f87369" />
+        <QuickLink to="/admin/beschikbaarheid" title="Beschikbaarheid" desc="Ingegeven beschikbaarheid" icon={<ListIcon />} accent="var(--color-primary)" />
         <QuickLink
           to={periods.length > 0 ? `/admin/rooster/${periods[periods.length - 1].id}` : '/admin/periodes/nieuw'}
-          title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} accent="#3c3c3b" />
+          title="Rooster" desc="Diensten en bezetting" icon={<GridIcon />} accent="var(--color-dark)" />
         <QuickLink to="/admin/inzichten" title="Inzichten" desc="Bezetting, uren en ziekte" icon={<ChartIcon />} accent="#0ea5e9" />
         <QuickLink to="/admin/financien" title="Financieel" desc="Verloonde uren, toeslag en pauzes" icon={<EuroIcon />} accent="#10b981" />
         <QuickLink to="/admin/logboek" title="Logboek" desc="Wie wijzigde wat, en wanneer" icon={<HistoryIcon />} accent="#a855f7" />
@@ -190,7 +190,7 @@ export default function AdminDashboard() {
               <CalendarIcon className="w-7 h-7 text-gray-300" />
             </div>
             <p className="text-gray-500 font-semibold text-sm">Nog geen periodes aangemaakt.</p>
-            <Link to="/admin/periodes/nieuw" className="text-sm font-bold mt-2 inline-block" style={{ color: '#f87369' }}>
+            <Link to="/admin/periodes/nieuw" className="text-sm font-bold mt-2 inline-block" style={{ color: 'var(--color-primary)' }}>
               Maak de eerste aan →
             </Link>
           </div>
@@ -377,7 +377,7 @@ function PeriodCard({ period, onUpdate, onExport }: { period: RosterPeriod; onUp
   )
 }
 
-function ToggleBtn({ label, active, onClick, disabled, accent = '#f87369' }: {
+function ToggleBtn({ label, active, onClick, disabled, accent = 'var(--color-primary)' }: {
   label: string; active: boolean; onClick: () => void; disabled: boolean; accent?: string
 }) {
   return (
@@ -423,7 +423,7 @@ function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-        style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+        style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
     </div>
   )
 }

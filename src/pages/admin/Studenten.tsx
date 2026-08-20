@@ -362,7 +362,7 @@ function StudentRow({
           <div className="flex items-center gap-3 min-w-0">
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-              style={{ backgroundColor: isAdminRow ? '#f87369' : '#3c3c3b' }}
+              style={{ backgroundColor: isAdminRow ? 'var(--color-primary)' : 'var(--color-dark)' }}
             >
               {(student.full_name || student.email)[0].toUpperCase()}
             </div>
@@ -482,7 +482,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
     </div>
   )
 }

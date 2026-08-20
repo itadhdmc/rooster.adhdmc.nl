@@ -513,7 +513,8 @@ Via de tegel **Instellingen** op het beheerpaneel zijn de regels van de
 applicatie aan te passen, zonder dat er een ontwikkelaar aan te pas komt:
 
 - **Organisatie** — naam, portal-URL, toegestaan e-maildomein (wie kan
-  inloggen; server-side afgedwongen) en het support-adres in de voettekst.
+  inloggen; server-side afgedwongen), het support-adres in de voettekst en
+  het label van Google Agenda-afspraken.
 - **E-mail** — afzendernaam en -adres van alle automatische mails.
 - **Kleuren** — de primaire en donkere huisstijlkleur.
 - **Roosterregels** — roosterbare dagen, standaard aantal plekken per

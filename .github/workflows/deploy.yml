@@ -25,6 +25,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Tests (verloonde-urenberekening e.a.)
+        run: npm test
+
       - name: Build productie
         run: npm run build
         env:

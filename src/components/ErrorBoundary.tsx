@@ -38,7 +38,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           <button
             onClick={() => window.location.reload()}
             className="mt-5 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-            style={{ backgroundColor: '#3c3c3b' }}
+            style={{ backgroundColor: 'var(--color-dark)' }}
           >
             Pagina opnieuw laden
           </button>

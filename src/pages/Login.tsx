@@ -5,7 +5,7 @@ export default function Login() {
   const { settings } = useSettings()
   async function handleLogin() {
     try {
-      await signInWithGoogle()
+      await signInWithGoogle(settings.allowed_domain)
     } catch (err) {
       alert('Inloggen mislukt. Probeer opnieuw.')
       console.error(err)
@@ -17,7 +17,7 @@ export default function Login() {
       {/* Left panel – branding */}
       <div
         className="hidden lg:flex flex-col justify-between w-1/2 p-12"
-        style={{ backgroundColor: '#3c3c3b' }}
+        style={{ backgroundColor: 'var(--color-dark)' }}
       >
         <img src="/logo.png" alt={settings.org_name} className="h-56 w-auto self-start object-contain" />
         <div>

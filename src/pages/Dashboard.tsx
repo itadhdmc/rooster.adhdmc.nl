@@ -93,7 +93,7 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+          style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
       </div>
     )
   }
@@ -123,7 +123,7 @@ export default function Dashboard() {
         {isAdmin && (
           <Link to="/admin"
             className="text-sm font-semibold text-white px-4 py-2 rounded-xl"
-            style={{ backgroundColor: '#3c3c3b' }}>
+            style={{ backgroundColor: 'var(--color-dark)' }}>
             Beheerpaneel →
           </Link>
         )}
@@ -131,8 +131,8 @@ export default function Dashboard() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Uren deze week" value={`${weekHours}u`} accent="#f87369" />
-        <StatCard label="Uren deze maand" value={`${monthHours}u`} accent="#3c3c3b" />
+        <StatCard label="Uren deze week" value={`${weekHours}u`} accent="var(--color-primary)" />
+        <StatCard label="Uren deze maand" value={`${monthHours}u`} accent="var(--color-dark)" />
         <StatCard label="Contract min" value={`${profile.contract_min_hours}u/w`} accent="#9ca3af" />
         <StatCard label="Contract max" value={`${profile.contract_max_hours}u/w`} accent="#9ca3af" />
       </div>
@@ -181,7 +181,7 @@ export default function Dashboard() {
 
       {/* Open periode banner */}
       {isOpenPeriod && activePeriod && pendingAssignments.length === 0 && upcomingShifts.length === 0 && (
-        <div className="rounded-2xl p-5 flex items-start justify-between gap-4" style={{ backgroundColor: '#f87369' }}>
+        <div className="rounded-2xl p-5 flex items-start justify-between gap-4" style={{ backgroundColor: 'var(--color-primary)' }}>
           <div>
             <p className="font-bold text-white text-base">
               {activePeriod.second_round_open ? '2e ronde open' : 'Diensten beschikbaar om je voor in te schrijven'}
@@ -197,7 +197,7 @@ export default function Dashboard() {
           </div>
           <Link to="/beschikbaarheid"
             className="flex-shrink-0 bg-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors"
-            style={{ color: '#f87369' }}>
+            style={{ color: 'var(--color-primary)' }}>
             Inschrijven →
           </Link>
         </div>
@@ -207,7 +207,7 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-dark text-base">Aankomende diensten</h2>
-          <Link to="/mijn-rooster" className="text-sm font-medium" style={{ color: '#f87369' }}>
+          <Link to="/mijn-rooster" className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>
             Alles bekijken →
           </Link>
         </div>
@@ -233,7 +233,7 @@ export default function Dashboard() {
                 <div key={shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
-                      style={{ backgroundColor: shift.shift_type === 'ochtend' ? '#f87369' : '#3c3c3b' }}>
+                      style={{ backgroundColor: shift.shift_type === 'ochtend' ? 'var(--color-primary)' : 'var(--color-dark)' }}>
                       {new Date(shift.shift_date).getDate()}
                     </div>
                     <div>

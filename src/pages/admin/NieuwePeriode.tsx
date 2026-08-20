@@ -146,7 +146,7 @@ export default function NieuwePeriode() {
             <label className="flex items-center gap-3 cursor-pointer">
               <div
                 className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
-                style={{ borderColor: includeOchtend ? '#f87369' : '#d1d5db', backgroundColor: includeOchtend ? '#f87369' : 'white' }}
+                style={{ borderColor: includeOchtend ? 'var(--color-primary)' : '#d1d5db', backgroundColor: includeOchtend ? 'var(--color-primary)' : 'white' }}
                 onClick={() => setIncludeOchtend(!includeOchtend)}
               >
                 {includeOchtend && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -161,7 +161,7 @@ export default function NieuwePeriode() {
             <label className="flex items-center gap-3 cursor-pointer">
               <div
                 className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
-                style={{ borderColor: includeMiddag ? '#f87369' : '#d1d5db', backgroundColor: includeMiddag ? '#f87369' : 'white' }}
+                style={{ borderColor: includeMiddag ? 'var(--color-primary)' : '#d1d5db', backgroundColor: includeMiddag ? 'var(--color-primary)' : 'white' }}
                 onClick={() => setIncludeMiddag(!includeMiddag)}
               >
                 {includeMiddag && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -201,7 +201,7 @@ export default function NieuwePeriode() {
           <label className="flex items-center gap-3 cursor-pointer">
             <div
               className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
-              style={{ borderColor: includeSaturday ? '#f87369' : '#d1d5db', backgroundColor: includeSaturday ? '#f87369' : 'white' }}
+              style={{ borderColor: includeSaturday ? 'var(--color-primary)' : '#d1d5db', backgroundColor: includeSaturday ? 'var(--color-primary)' : 'white' }}
               onClick={() => setIncludeSaturday(!includeSaturday)}
             >
               {includeSaturday && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -214,7 +214,7 @@ export default function NieuwePeriode() {
         </div>
 
         {/* Summary */}
-        <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: '#fff1f0', color: '#f87369' }}>
+        <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: 'var(--color-primary-50)', color: 'var(--color-primary)' }}>
           {totalShifts} diensten worden aangemaakt voor {monthLabel(year, month)}
           {includeOchtend && includeMiddag && ' (ochtend + middag per dag)'}
           {singleStaffLabel ? `. ${singleStaffLabel.charAt(0).toUpperCase()}${singleStaffLabel.slice(1)} krijgen max 1 persoon.` : '.'}
@@ -228,9 +228,9 @@ export default function NieuwePeriode() {
           onClick={handleCreate}
           disabled={saving}
           className="w-full text-white py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-60"
-          style={{ backgroundColor: '#f87369' }}
-          onMouseEnter={e => !saving && (e.currentTarget.style.backgroundColor = '#e5574d')}
-          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#f87369')}
+          style={{ backgroundColor: 'var(--color-primary)' }}
+          onMouseEnter={e => !saving && (e.currentTarget.style.backgroundColor = 'var(--color-primary-600)')}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--color-primary)')}
         >
           {saving ? 'Aanmaken...' : `Periode ${monthLabel(year, month)} aanmaken`}
         </button>

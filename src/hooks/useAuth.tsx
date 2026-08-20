@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { Session, User } from '@supabase/supabase-js'
-import { supabase, ALLOWED_DOMAIN } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
+import { useSettings } from './useSettings'
 import { Profile } from '../types'
 
 interface AuthContextType {
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthContextType>({
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { settings } = useSettings()
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -72,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false)
   }
 
-  const isAllowedDomain = session?.user?.email?.endsWith(`@${ALLOWED_DOMAIN}`) ?? false
+  const isAllowedDomain = session?.user?.email?.endsWith(`@${settings.allowed_domain}`) ?? false
 
   return (
     <AuthContext.Provider value={{

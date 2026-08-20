@@ -72,7 +72,7 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-surface">
       {/* Top navigation */}
-      <nav style={{ backgroundColor: '#3c3c3b' }} className="shadow-lg sticky top-0 z-30">
+      <nav style={{ backgroundColor: 'var(--color-dark)' }} className="shadow-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo + nav links */}
@@ -96,7 +96,7 @@ export default function Layout({ children }: LayoutProps) {
                   <div className="relative">
                     <SwapIcon className="w-4 h-4" />
                     {swapCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
                     )}
                   </div>
                   Ruilen
@@ -116,7 +116,7 @@ export default function Layout({ children }: LayoutProps) {
                   <div className="relative">
                     <BellIcon className="w-4 h-4" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
                     )}
                   </div>
                   Inbox
@@ -180,7 +180,7 @@ export default function Layout({ children }: LayoutProps) {
                 <div className="relative">
                   <SwapIcon className="w-5 h-5" />
                   {swapCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
                   )}
                 </div>
                 Ruilen{swapCount > 0 ? ` (${swapCount})` : ''}
@@ -195,7 +195,7 @@ export default function Layout({ children }: LayoutProps) {
                 <div className="relative">
                   <BellIcon className="w-5 h-5" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: '#f87369' }} />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
                   )}
                 </div>
                 Inbox{unreadCount > 0 ? ` (${unreadCount})` : ''}

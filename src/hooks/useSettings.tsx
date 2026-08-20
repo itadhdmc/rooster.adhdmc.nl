@@ -19,6 +19,7 @@ export interface AppSettings {
   support_email: string
   mail_from_name: string
   mail_from_email: string
+  calendar_label: string
   color_primary: string
   color_dark: string
   monthly_cap_factor: number
@@ -42,6 +43,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   support_email: 'ictservicedesk@adhdmc.nl',
   mail_from_name: 'ADHDMC Rooster',
   mail_from_email: 'rooster@adhdmc.nl',
+  calendar_label: 'ADHDMC Zorgadministratie',
+  // Echte hexwaarden (geen var()): dit zijn de bronkleuren waaruit de
+  // CSS-variabelen en tinten worden berekend.
   color_primary: '#f87369',
   color_dark: '#3c3c3b',
   monthly_cap_factor: 4,
@@ -71,6 +75,35 @@ const SettingsContext = createContext<SettingsContextValue>({
   reload: async () => {},
 })
 
+// Mengt een hexkleur met wit (tint) of zwart (shade); weight = aandeel kleur.
+function mix(hex: string, withColor: 'white' | 'black', weight: number): string {
+  const clean = hex.replace('#', '')
+  if (clean.length !== 6) return hex
+  const target = withColor === 'white' ? 255 : 0
+  const channels = [0, 2, 4].map(i => {
+    const c = parseInt(clean.slice(i, i + 2), 16)
+    return Math.round(c * weight + target * (1 - weight)).toString(16).padStart(2, '0')
+  })
+  return `#${channels.join('')}`
+}
+
+// Zet het volledige kleurenpalet als CSS-variabelen; alle tailwind-
+// klassen (salmon-*/dark-*) en inline var()-styles volgen automatisch.
+function applyThemeColors(primary: string, dark: string) {
+  const root = document.documentElement.style
+  root.setProperty('--color-primary-50', mix(primary, 'white', 0.08))
+  root.setProperty('--color-primary-100', mix(primary, 'white', 0.16))
+  root.setProperty('--color-primary-200', mix(primary, 'white', 0.35))
+  root.setProperty('--color-primary-300', mix(primary, 'white', 0.55))
+  root.setProperty('--color-primary-400', mix(primary, 'white', 0.8))
+  root.setProperty('--color-primary', primary)
+  root.setProperty('--color-primary-600', mix(primary, 'black', 0.88))
+  root.setProperty('--color-primary-700', mix(primary, 'black', 0.75))
+  root.setProperty('--color-dark', dark)
+  root.setProperty('--color-dark-800', mix(dark, 'black', 0.9))
+  root.setProperty('--color-dark-900', mix(dark, 'black', 0.78))
+}
+
 function normalize(row: Record<string, unknown>): AppSettings {
   const s = { ...DEFAULT_SETTINGS, ...row } as AppSettings
   // time-kolommen komen als 'HH:MM:SS' terug; wij rekenen met 'HH:MM'.
@@ -87,8 +120,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const { data } = await supabase.from('app_settings').select('*').eq('id', 1).maybeSingle()
     const s = data ? normalize(data) : DEFAULT_SETTINGS
     setSettings(s)
-    document.documentElement.style.setProperty('--color-primary', s.color_primary)
-    document.documentElement.style.setProperty('--color-dark', s.color_dark)
+    applyThemeColors(s.color_primary, s.color_dark)
     setLoaded(true)
   }
 

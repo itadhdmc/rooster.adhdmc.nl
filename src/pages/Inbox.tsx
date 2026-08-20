@@ -100,7 +100,7 @@ export default function Inbox() {
                   </p>
                 </div>
                 {!n.read && (
-                  <div className="w-2 h-2 rounded-full bg-salmon-500 flex-shrink-0 mt-1.5" style={{ backgroundColor: '#f87369' }} />
+                  <div className="w-2 h-2 rounded-full bg-salmon-500 flex-shrink-0 mt-1.5" style={{ backgroundColor: 'var(--color-primary)' }} />
                 )}
                 <button
                   onClick={() => deleteNotification(n.id)}
@@ -123,7 +123,7 @@ function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-        style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+        style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
     </div>
   )
 }

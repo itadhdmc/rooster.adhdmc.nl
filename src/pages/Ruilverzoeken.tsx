@@ -64,7 +64,7 @@ export default function Ruilverzoeken() {
       {loading ? (
         <div className="flex items-center justify-center h-48">
           <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-            style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+            style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
         </div>
       ) : isEmpty ? (
         <div className="card p-16 text-center">

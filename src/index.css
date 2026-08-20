@@ -3,12 +3,27 @@
 @tailwind utilities;
 
 @layer base {
+  /* Fallback-huisstijl (ADHDMC); SettingsProvider overschrijft deze
+     variabelen met de kleuren uit app_settings. */
+  :root {
+    --color-primary-50:  #fff1f0;
+    --color-primary-100: #ffe0de;
+    --color-primary-200: #ffc2be;
+    --color-primary-300: #fbb6b0;
+    --color-primary-400: #f99590;
+    --color-primary:     #f87369;
+    --color-primary-600: #e5574d;
+    --color-primary-700: #c83d33;
+    --color-dark:        #3c3c3b;
+    --color-dark-800:    #2e2e2d;
+    --color-dark-900:    #1e1e1d;
+  }
   * {
     box-sizing: border-box;
   }
   body {
     background-color: #f2f2f7;
-    color: #3c3c3b;
+    color: var(--color-dark);
     @apply antialiased;
   }
 }

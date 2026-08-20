@@ -46,6 +46,7 @@ export default function Instellingen() {
       support_email: form.support_email,
       mail_from_name: form.mail_from_name,
       mail_from_email: form.mail_from_email,
+      calendar_label: form.calendar_label,
       color_primary: form.color_primary,
       color_dark: form.color_dark,
       monthly_cap_factor: form.monthly_cap_factor,
@@ -82,7 +83,7 @@ export default function Instellingen() {
           onClick={save}
           disabled={saving}
           className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50 flex-shrink-0"
-          style={{ backgroundColor: 'var(--color-primary, #f87369)' }}
+          style={{ backgroundColor: 'var(--color-primary)' }}
         >
           {saving ? 'Opslaan...' : saved ? '✓ Opgeslagen' : 'Opslaan'}
         </button>
@@ -104,6 +105,9 @@ export default function Instellingen() {
         </Field>
         <Field label="Support e-mailadres">
           <input className={inp} value={form.support_email} onChange={e => set('support_email', e.target.value)} />
+        </Field>
+        <Field label="Agenda-label" hint='Titel van agenda-afspraken: "Ochtenddienst – <label>".'>
+          <input className={inp} value={form.calendar_label} onChange={e => set('calendar_label', e.target.value)} />
         </Field>
       </Section>
 
@@ -208,7 +212,7 @@ export default function Instellingen() {
         onClick={save}
         disabled={saving}
         className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
-        style={{ backgroundColor: 'var(--color-primary, #f87369)' }}
+        style={{ backgroundColor: 'var(--color-primary)' }}
       >
         {saving ? 'Opslaan...' : saved ? '✓ Opgeslagen' : 'Alles opslaan'}
       </button>
@@ -252,7 +256,7 @@ function DayPicker({ selected, onToggle }: { selected: number[]; onToggle: (day:
               ? 'text-white border-transparent'
               : 'border-gray-200 text-gray-400 hover:text-dark hover:border-gray-300'
           }`}
-          style={selected.includes(d.value) ? { backgroundColor: 'var(--color-dark, #3c3c3b)' } : {}}
+          style={selected.includes(d.value) ? { backgroundColor: 'var(--color-dark)' } : {}}
         >
           {d.label}
         </button>

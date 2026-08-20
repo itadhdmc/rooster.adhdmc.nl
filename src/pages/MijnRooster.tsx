@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useSettings } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
 import { getGoogleToken } from '../lib/auth'
 import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
@@ -20,6 +21,7 @@ function canLeaveReserve(shift: Shift): boolean {
 
 export default function MijnRooster() {
   const { profile } = useAuth()
+  const { settings } = useSettings()
   const [assignments, setAssignments] = useState<AssignmentWithShift[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
@@ -109,7 +111,7 @@ export default function MijnRooster() {
     }
     for (const [key, group] of byMonth) {
       const [y, m] = key.split('-').map(Number)
-      await repairMonthEvents(token, group, y, m)
+      await repairMonthEvents(token, group, y, m, settings.calendar_label)
       for (const a of group) await persistEventId(a.id, eventIdFor(a.id))
     }
     await loadAssignments()
@@ -119,7 +121,7 @@ export default function MijnRooster() {
     setAutoSyncing(true)
     let synced = 0
     for (const a of unsynced) {
-      const eventId = await createCalendarEvent(a.shift, token, a.id)
+      const eventId = await createCalendarEvent(a.shift, token, a.id, settings.calendar_label)
       if (eventId) {
         await persistEventId(a.id, eventId)
         synced++
@@ -196,7 +198,7 @@ export default function MijnRooster() {
       await persistEventId(assignment.id, null)
       await loadAssignments()
     } else {
-      const eventId = await createCalendarEvent(assignment.shift, googleToken, assignment.id)
+      const eventId = await createCalendarEvent(assignment.shift, googleToken, assignment.id, settings.calendar_label)
       if (eventId) {
         await persistEventId(assignment.id, eventId)
         await loadAssignments()
@@ -262,7 +264,7 @@ export default function MijnRooster() {
     setRepairing(true)
     const [y, m] = selectedMonth.split('-').map(Number)
     const approved = assignments.filter(a => a.status === 'approved').map(a => ({ id: a.id, shift: a.shift }))
-    const removed = await repairMonthEvents(googleToken, approved, y, m)
+    const removed = await repairMonthEvents(googleToken, approved, y, m, settings.calendar_label)
     for (const a of approved) await persistEventId(a.id, eventIdFor(a.id))
     await loadAssignments()
     setRepairing(false)
@@ -336,7 +338,7 @@ export default function MijnRooster() {
               <p className="text-xs text-gray-400 mt-0.5">Een collega wil met je ruilen</p>
             </div>
           </div>
-          <span className="text-sm font-semibold flex-shrink-0" style={{ color: '#f87369' }}>Bekijken →</span>
+          <span className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--color-primary)' }}>Bekijken →</span>
         </Link>
       )}
 
@@ -393,7 +395,7 @@ export default function MijnRooster() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="card p-4">
-          <p className="text-2xl font-bold" style={{ color: '#f87369' }}>{approvedAssignments.length}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--color-primary)' }}>{approvedAssignments.length}</p>
           <p className="text-xs text-gray-400 mt-1">Ingeroosterd</p>
         </div>
         <div className="card p-4">
@@ -430,7 +432,7 @@ export default function MijnRooster() {
               onClick={syncAll}
               disabled={!googleToken || syncedCount === approvedAssignments.length || autoSyncing || repairing}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#3c3c3b' }}
+              style={{ backgroundColor: 'var(--color-dark)' }}
             >
               <CalendarSyncIcon className="w-4 h-4" />
               Alles synchroniseren
@@ -442,7 +444,7 @@ export default function MijnRooster() {
       {/* Maandkalender */}
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+          <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
         </div>
       ) : assignments.length === 0 ? (
         <div className="card p-16 text-center">
@@ -467,7 +469,7 @@ export default function MijnRooster() {
 
           {/* Calendar grid */}
           <div className="card overflow-hidden">
-            <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: '#3c3c3b' }}>
+            <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: 'var(--color-dark)' }}>
               {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'].map((d, i) => (
                 <div key={d} className={`py-3 text-center ${i < 5 ? 'border-r border-white/10' : ''}`}>
                   <span className="hidden sm:inline text-xs font-semibold text-white/50 uppercase tracking-widest">{d}</span>
@@ -498,7 +500,7 @@ export default function MijnRooster() {
                         <div className="flex items-center justify-between mb-1.5 sm:mb-2">
                           <div
                             className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center text-xs font-bold ${isToday ? 'text-white' : 'text-dark'}`}
-                            style={isToday ? { backgroundColor: '#f87369' } : {}}
+                            style={isToday ? { backgroundColor: 'var(--color-primary)' } : {}}
                           >
                             {day.getDate()}
                           </div>
@@ -518,7 +520,7 @@ export default function MijnRooster() {
           {/* Geselecteerde dag */}
           {selectedDate && selectedDayAssignments.length > 0 && (
             <div className="card overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: '#3c3c3b' }}>
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: 'var(--color-dark)' }}>
                 <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
                 <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
               </div>
@@ -617,7 +619,7 @@ export default function MijnRooster() {
             <div className="p-4 overflow-y-auto">
               {loadingSwappable ? (
                 <div className="flex items-center justify-center py-10">
-                  <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+                  <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
                 </div>
               ) : swappable.length === 0 ? (
                 <p className="text-gray-400 text-sm text-center py-8">

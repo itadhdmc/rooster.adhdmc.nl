@@ -6,20 +6,24 @@ export default {
   ],
   theme: {
     extend: {
+      // Huisstijlkleuren komen uit CSS-variabelen zodat ze per organisatie
+      // instelbaar zijn (app_settings → SettingsProvider). De fallbacks
+      // staan in index.css (:root).
       colors: {
         salmon: {
-          50:  '#fff1f0',
-          100: '#ffe0de',
-          200: '#ffc2be',
-          400: '#f99590',
-          500: '#f87369',
-          600: '#e5574d',
-          700: '#c83d33',
+          50:  'var(--color-primary-50)',
+          100: 'var(--color-primary-100)',
+          200: 'var(--color-primary-200)',
+          300: 'var(--color-primary-300)',
+          400: 'var(--color-primary-400)',
+          500: 'var(--color-primary)',
+          600: 'var(--color-primary-600)',
+          700: 'var(--color-primary-700)',
         },
         dark: {
-          DEFAULT: '#3c3c3b',
-          800: '#2e2e2d',
-          900: '#1e1e1d',
+          DEFAULT: 'var(--color-dark)',
+          800: 'var(--color-dark-800)',
+          900: 'var(--color-dark-900)',
         },
         surface: '#f2f2f7',
       },

@@ -1,13 +1,13 @@
 import { supabase, ALLOWED_DOMAIN } from './supabase'
 
-export async function signInWithGoogle() {
+export async function signInWithGoogle(domain: string = ALLOWED_DOMAIN) {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/auth/callback`,
       scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events',
       queryParams: {
-        hd: ALLOWED_DOMAIN,
+        hd: domain,
         access_type: 'offline',
         prompt: 'consent',
       },
@@ -21,8 +21,8 @@ export async function signOut() {
   if (error) throw error
 }
 
-export function isAllowedEmail(email: string): boolean {
-  return email.endsWith(`@${ALLOWED_DOMAIN}`)
+export function isAllowedEmail(email: string, domain: string = ALLOWED_DOMAIN): boolean {
+  return email.endsWith(`@${domain}`)
 }
 
 export async function getGoogleToken(): Promise<string | null> {

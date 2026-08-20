@@ -404,7 +404,7 @@ export default function RoosterBeheer() {
           <p className="text-xs text-gray-400 mt-1">Vol</p>
         </div>
         <div className="card p-4 text-center">
-          <p className="text-2xl font-bold" style={{ color: openShifts > 0 ? '#f87369' : '#22c55e' }}>
+          <p className="text-2xl font-bold" style={{ color: openShifts > 0 ? 'var(--color-primary)' : '#22c55e' }}>
             {openShifts}
           </p>
           <p className="text-xs text-gray-400 mt-1">Open</p>
@@ -459,7 +459,7 @@ export default function RoosterBeheer() {
             onClick={() => addSaturdays(missingSaturdays)}
             disabled={processing === 'saturdays'}
             className="text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
-            style={{ backgroundColor: '#f87369' }}
+            style={{ backgroundColor: 'var(--color-primary)' }}
           >
             {processing === 'saturdays' ? 'Toevoegen...' : 'Zaterdagen toevoegen'}
           </button>
@@ -476,7 +476,7 @@ export default function RoosterBeheer() {
 
       {/* Calendar grid */}
       <div className="card overflow-hidden">
-        <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: '#3c3c3b' }}>
+        <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: 'var(--color-dark)' }}>
           {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'].map((d, i) => (
             <div key={d} className={`py-3 text-center ${i < 5 ? 'border-r border-white/10' : ''}`}>
               <span className="hidden sm:inline text-xs font-semibold text-white/50 uppercase tracking-widest">{d}</span>
@@ -513,7 +513,7 @@ export default function RoosterBeheer() {
                         isToday
                           ? 'text-white'
                           : 'text-dark'
-                      }`} style={isToday ? { backgroundColor: '#f87369' } : {}}>
+                      }`} style={isToday ? { backgroundColor: 'var(--color-primary)' } : {}}>
                         {day.getDate()}
                       </div>
                       {dayPending > 0 && (
@@ -538,7 +538,7 @@ export default function RoosterBeheer() {
       {/* Selected day panel */}
       {selectedDate && (
         <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: '#3c3c3b' }}>
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: 'var(--color-dark)' }}>
             <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
             <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
           </div>
@@ -1172,7 +1172,7 @@ function Spinner() {
   return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-        style={{ borderColor: '#f87369', borderTopColor: 'transparent' }} />
+        style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
     </div>
   )
 }
