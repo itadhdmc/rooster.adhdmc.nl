@@ -39,6 +39,7 @@ drie delen:
   - [B11. Inzichten](#b11-inzichten)
   - [B12. Financieel dashboard](#b12-financieel-dashboard)
   - [B13. Logboek](#b13-logboek)
+  - [B14. Instellingen](#b14-instellingen)
 - [Deel C — Technisch beheer](#deel-c--technisch-beheer)
 - [Veelgestelde vragen & problemen](#veelgestelde-vragen--problemen)
 - [De maandelijkse routine in het kort](#de-maandelijkse-routine-in-het-kort)
@@ -503,6 +504,32 @@ toevoegen/wijzigen/verwijderen en alle stappen van ruilverzoeken.
 > ℹ️ Het logboek vult zich vanaf het moment dat deze functie is
 > geïnstalleerd; oudere wijzigingen zijn niet met terugwerkende kracht
 > zichtbaar.
+
+---
+
+## B14. Instellingen
+
+Via de tegel **Instellingen** op het beheerpaneel zijn de regels van de
+applicatie aan te passen, zonder dat er een ontwikkelaar aan te pas komt:
+
+- **Organisatie** — naam, portal-URL, toegestaan e-maildomein (wie kan
+  inloggen; server-side afgedwongen) en het support-adres in de voettekst.
+- **E-mail** — afzendernaam en -adres van alle automatische mails.
+- **Kleuren** — de primaire en donkere huisstijlkleur.
+- **Roosterregels** — roosterbare dagen, standaard aantal plekken per
+  dienst, éénpersoonsdagen (nu wo + za) en de maandlimiet-factor
+  (contractmaximum × factor).
+- **Loonregels** — toeslagdagen en hun naam in de exports, en de
+  onbetaalde pauze (aan/uit + tijden).
+- **Diensttijden** — labels en standaardtijden van ochtend/middag en de
+  vroeg/laat-varianten voor de tijdverdeling.
+
+Wijzigingen gelden direct voor alle schermen, exports en e-mails.
+Nieuwe diensttijden gelden alleen voor diensten die je daarna aanmaakt.
+
+> ⚠️ Pas de **loonregels** (pauze, toeslagdagen, maandlimiet) niet
+> halverwege een maand aan zonder overleg met de financiële
+> administratie: exports over die maand rekenen dan met de nieuwe regels.
 
 ---
 

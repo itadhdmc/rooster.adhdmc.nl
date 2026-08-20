@@ -1,15 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, isSingleStudentDay, dateToISO, monthLabel } from '../../utils/dates'
+import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, dateToISO, monthLabel } from '../../utils/dates'
+import { useSettings, maxStudentsFor } from '../../hooks/useSettings'
+import { hoursBetween } from '../../utils/shiftTimes'
 
-const SHIFT_TEMPLATES = [
-  { shift_type: 'ochtend' as const, start_time: '08:30', end_time: '12:30', duration_hours: 4 },
-  { shift_type: 'middag' as const, start_time: '12:00', end_time: '17:30', duration_hours: 5.5 },
-]
+const DAY_PLURAL = ['', 'maandagen', 'dinsdagen', 'woensdagen', 'donderdagen', 'vrijdagen', 'zaterdagen', 'zondagen']
 
 export default function NieuwePeriode() {
   const navigate = useNavigate()
+  const { settings } = useSettings()
   const now = new Date()
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
@@ -18,19 +18,33 @@ export default function NieuwePeriode() {
   const [deadline, setDeadline] = useState('')
   const [includeOchtend, setIncludeOchtend] = useState(true)
   const [includeMiddag, setIncludeMiddag] = useState(true)
-  const [maxStudents, setMaxStudents] = useState(2)
+  const [maxStudents, setMaxStudents] = useState(settings.default_max_students)
   const [includeSaturday, setIncludeSaturday] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  useEffect(() => { setMaxStudents(settings.default_max_students) }, [settings.default_max_students])
+
+  // Diensttypes met instelbare tijden (uit app_settings).
+  const shiftTemplates = settings.shift_types.map(t => ({
+    shift_type: t.key,
+    label: t.label,
+    start_time: t.start,
+    end_time: t.end,
+    duration_hours: hoursBetween(t.start, t.end),
+  }))
+
   const days = includeSaturday ? getRosterDaysInMonth(year, month) : getWorkdaysInMonth(year, month)
   const workdays = getWorkdaysInMonth(year, month)
   const saturdays = days.filter(isSaturday)
-  const selectedTypes = SHIFT_TEMPLATES.filter(t =>
+  const selectedTypes = shiftTemplates.filter(t =>
     (t.shift_type === 'ochtend' && includeOchtend) ||
     (t.shift_type === 'middag' && includeMiddag)
   )
   const totalShifts = days.length * selectedTypes.length
+  const singleStaffLabel = settings.single_staff_weekdays
+    .filter(d => d !== 6 || includeSaturday)
+    .map(d => DAY_PLURAL[d]).join(' en ')
 
   async function handleCreate() {
     if (!includeOchtend && !includeMiddag) { setError('Selecteer minimaal één diensttype.'); return }
@@ -63,8 +77,8 @@ export default function NieuwePeriode() {
           start_time: template.start_time,
           end_time: template.end_time,
           duration_hours: template.duration_hours,
-          // Woensdag en zaterdag: altijd maar 1 student.
-          max_students: isSingleStudentDay(day) ? 1 : maxStudents,
+          // Eénpersoonsdagen (instelbaar) altijd max 1.
+          max_students: maxStudentsFor(settings, day) === 1 ? 1 : maxStudents,
         })
       }
     }
@@ -138,8 +152,10 @@ export default function NieuwePeriode() {
                 {includeOchtend && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </div>
               <div>
-                <p className="text-sm font-semibold text-dark">Ochtenddienst</p>
-                <p className="text-xs text-gray-400">08:30 – 12:30 (4u)</p>
+                <p className="text-sm font-semibold text-dark">{shiftTemplates[0]?.label || 'Ochtend'}dienst</p>
+                <p className="text-xs text-gray-400">
+                  {shiftTemplates[0] ? `${shiftTemplates[0].start_time} – ${shiftTemplates[0].end_time} (${String(shiftTemplates[0].duration_hours).replace('.', ',')}u)` : ''}
+                </p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
@@ -151,8 +167,10 @@ export default function NieuwePeriode() {
                 {includeMiddag && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
               </div>
               <div>
-                <p className="text-sm font-semibold text-dark">Middagdienst</p>
-                <p className="text-xs text-gray-400">12:00 – 17:30 (5,5u) — 30 min overlap</p>
+                <p className="text-sm font-semibold text-dark">{shiftTemplates[1]?.label || 'Middag'}dienst</p>
+                <p className="text-xs text-gray-400">
+                  {shiftTemplates[1] ? `${shiftTemplates[1].start_time} – ${shiftTemplates[1].end_time} (${String(shiftTemplates[1].duration_hours).replace('.', ',')}u)` : ''}
+                </p>
               </div>
             </label>
           </div>
@@ -172,7 +190,9 @@ export default function NieuwePeriode() {
             />
             <span className="text-sm text-gray-400">student(en) per dienst</span>
           </div>
-          <p className="text-xs text-gray-400 mt-1.5">Woensdag en zaterdag zijn altijd voor maar 1 student.</p>
+          <p className="text-xs text-gray-400 mt-1.5">
+            {singleStaffLabel ? `${singleStaffLabel.charAt(0).toUpperCase()}${singleStaffLabel.slice(1)} zijn altijd voor maar 1 persoon (instelbaar via Instellingen).` : 'Geen éénpersoonsdagen ingesteld.'}
+          </p>
         </div>
 
         {/* Zaterdag */}
@@ -197,7 +217,7 @@ export default function NieuwePeriode() {
         <div className="rounded-xl p-4 text-sm font-medium" style={{ backgroundColor: '#fff1f0', color: '#f87369' }}>
           {totalShifts} diensten worden aangemaakt voor {monthLabel(year, month)}
           {includeOchtend && includeMiddag && ' (ochtend + middag per dag)'}
-          {'. Woensdagen'}{includeSaturday && saturdays.length > 0 ? ' en zaterdagen' : ''}{' krijgen max 1 student.'}
+          {singleStaffLabel ? `. ${singleStaffLabel.charAt(0).toUpperCase()}${singleStaffLabel.slice(1)} krijgen max 1 persoon.` : '.'}
         </div>
 
         {error && (

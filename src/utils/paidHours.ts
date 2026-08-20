@@ -3,9 +3,15 @@ import { hoursBetween } from './shiftTimes'
 // Onbetaalde pauze voor wie de hele dag werkt (beide dagdelen).
 // Losse dagdelen krijgen geen aftrek: de middagploeg vangt juist de
 // pauze van de dagwerkers op (daarvoor bestaat de middagoverlap).
-export const PAUSE_START = '12:00'
-export const PAUSE_END = '12:30'
-export const PAUSE_HOURS = 0.5
+// De tijden zijn instelbaar via app_settings; dit zijn de defaults.
+export interface PauseConfig {
+  enabled: boolean
+  start: string
+  end: string
+  hours: number
+}
+
+export const DEFAULT_PAUSE: PauseConfig = { enabled: true, start: '12:00', end: '12:30', hours: 0.5 }
 
 // Minimale vorm van een toewijzing + dienst die nodig is om verloonde
 // uren te berekenen (export én Inzichten gebruiken deze berekening).
@@ -46,12 +52,13 @@ function overlapHours(a: PaidHoursRow, b: PaidHoursRow): number {
 
 // Verloonde uren van één dag: som van de blokken, minus dubbele overlap,
 // en bij een hele dag (2+ blokken) minus de onbetaalde pauze.
-export function dayPaidHours(rows: PaidHoursRow[]): { hours: number; pause: number; overlap: number } {
+export function dayPaidHours(rows: PaidHoursRow[], pause: PauseConfig = DEFAULT_PAUSE): { hours: number; pause: number; overlap: number } {
   const gross = rows.reduce((n, r) => n + rowHours(r), 0)
   if (rows.length < 2) return { hours: gross, pause: 0, overlap: 0 }
   let overlap = 0
   for (let i = 0; i < rows.length; i++)
     for (let j = i + 1; j < rows.length; j++)
       overlap += overlapHours(rows[i], rows[j])
-  return { hours: gross - overlap - PAUSE_HOURS, pause: PAUSE_HOURS, overlap }
+  const deduct = pause.enabled ? pause.hours : 0
+  return { hours: gross - overlap - deduct, pause: deduct, overlap }
 }

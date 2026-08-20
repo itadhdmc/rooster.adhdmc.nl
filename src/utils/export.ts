@@ -1,7 +1,25 @@
 import { supabase } from '../lib/supabase'
 import { Profile, RosterPeriod } from '../types'
 import { monthLabel, MONTHS_NL, isoWeek, isSaturdayISO } from './dates'
-import { rowHours, rowTimes, dayPaidHours, PAUSE_START, PAUSE_END } from './paidHours'
+import { rowHours, rowTimes, dayPaidHours, PauseConfig, DEFAULT_PAUSE } from './paidHours'
+
+// Instelbare regels voor de export (uit app_settings, zie useSettings).
+// De defaults zijn de oude hardcoded ADHDMC-waarden.
+export interface ExportConfig {
+  pause: PauseConfig
+  premiumLabel: string
+  isPremium: (iso: string) => boolean
+}
+
+export const DEFAULT_EXPORT_CONFIG: ExportConfig = {
+  pause: DEFAULT_PAUSE,
+  premiumLabel: 'zaterdag',
+  isPremium: isSaturdayISO,
+}
+
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
 
 interface ExportShiftRow {
   shift_date: string
@@ -120,7 +138,7 @@ async function fetchApproved(period: RosterPeriod, range: ExportRange): Promise<
  * in doordeweeks en zaterdag (i.v.m. toeslag), ziekte- en afwezigheidsuren,
  * plus weektotalen per medewerker voor de loonadministratie.
  */
-export async function exportPeriodHours(period: RosterPeriod, range: ExportRange): Promise<{ ok: boolean; message?: string }> {
+export async function exportPeriodHours(period: RosterPeriod, range: ExportRange, cfg: ExportConfig = DEFAULT_EXPORT_CONFIG): Promise<{ ok: boolean; message?: string }> {
   const res = await fetchApproved(period, range)
   if (!res.ok) return res
 
@@ -158,7 +176,7 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
     t.shifts += 1
     if (shift.shift_type === 'ochtend') t.ochtend += 1
     else if (shift.shift_type === 'middag') t.middag += 1
-    if (isSaturdayISO(shift.shift_date)) t.saturdayShifts += 1
+    if (cfg.isPremium(shift.shift_date)) t.saturdayShifts += 1
 
     const key = `${row.user_id}|${shift.shift_date}`
     if (!dayGroups.has(key)) dayGroups.set(key, [])
@@ -168,8 +186,8 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
   for (const [key, rows] of dayGroups) {
     const [userId, date] = key.split('|')
     const t = totalsFor(userId)
-    const { hours, pause } = dayPaidHours(rows)
-    const sat = isSaturdayISO(date)
+    const { hours, pause } = dayPaidHours(rows, cfg.pause)
+    const sat = cfg.isPremium(date)
     if (sat) t.saturdayHours += hours
     else t.weekdayHours += hours
     t.pauseHours += pause
@@ -189,7 +207,7 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
   lines.push('')
   const header = [
     'Naam', 'E-mail', 'Gewerkte dagen', 'Gewerkte diensten', 'Ochtenddiensten', 'Middagdiensten',
-    'Zaterdagdiensten', 'Uren doordeweeks', 'Uren zaterdag', 'Pauze-uren (onbetaald)', 'Totaal verloonde uren',
+    `${cap(cfg.premiumLabel)}diensten`, 'Uren doordeweeks', `Uren ${cfg.premiumLabel}`, 'Pauze-uren (onbetaald)', 'Totaal verloonde uren',
     'Ziek (diensten)', 'Ziek (uren)', 'Afwezig (diensten)', 'Afwezig (uren)',
   ]
   lines.push(header.map(cell).join(';'))
@@ -214,7 +232,7 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
   // Weektotalen per medewerker (loonweken).
   lines.push('')
   lines.push(cell('Weektotalen'))
-  lines.push(['Week', 'Naam', 'Uren doordeweeks', 'Uren zaterdag', 'Totaal uren'].map(cell).join(';'))
+  lines.push(['Week', 'Naam', 'Uren doordeweeks', `Uren ${cfg.premiumLabel}`, 'Totaal uren'].map(cell).join(';'))
   const weekRows = [...weekTotals.values()].sort((a, b) => a.week - b.week || a.name.localeCompare(b.name))
   for (const w of weekRows) {
     lines.push([
@@ -233,7 +251,7 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
  * medewerker, werktijden, uren, zaterdag-markering en aanwezigheid.
  * Brondata voor controle en boekhouding.
  */
-export async function exportPeriodDetails(period: RosterPeriod, range: ExportRange): Promise<{ ok: boolean; message?: string }> {
+export async function exportPeriodDetails(period: RosterPeriod, range: ExportRange, cfg: ExportConfig = DEFAULT_EXPORT_CONFIG): Promise<{ ok: boolean; message?: string }> {
   const res = await fetchApproved(period, range)
   if (!res.ok) return res
 
@@ -254,7 +272,7 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
   const lines: string[] = []
   lines.push(cell(`Urenexport detail ${rangeLabel(period, range)}`))
   lines.push('')
-  lines.push(['Datum', 'Dag', 'Week', 'Zaterdag', 'Naam', 'E-mail', 'Dagdeel', 'Van', 'Tot', 'Uren', 'Aanwezigheid'].map(cell).join(';'))
+  lines.push(['Datum', 'Dag', 'Week', cap(cfg.premiumLabel), 'Naam', 'E-mail', 'Dagdeel', 'Van', 'Tot', 'Uren', 'Aanwezigheid'].map(cell).join(';'))
 
   let paidTotal = 0
   for (const key of groupKeys) {
@@ -264,7 +282,7 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
     const weekday = new Date(date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'long' })
     const base = [
       cell(ddmm(date) + '-' + period.year), cell(weekday), cell(`Week ${isoWeek(date)}`),
-      cell(isSaturdayISO(date) ? 'ja' : 'nee'),
+      cell(cfg.isPremium(date) ? 'ja' : 'nee'),
       cell(prof?.full_name || prof?.email || 'Onbekend'), cell(prof?.email || ''),
     ]
 
@@ -279,11 +297,13 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
     const worked = dayRows.filter(r => (r.attendance || 'gewerkt') === 'gewerkt')
     if (worked.length >= 2) {
       // Hele dag: dubbele overlap en onbetaalde pauze als correctieregels.
-      const { hours, pause, overlap } = dayPaidHours(worked)
+      const { hours, pause, overlap } = dayPaidHours(worked, cfg.pause)
       if (overlap > 0) {
         lines.push([...base, cell('overlapcorrectie'), '', '', cell(nl(-overlap)), cell('-')].join(';'))
       }
-      lines.push([...base, cell('pauze (onbetaald)'), cell(PAUSE_START), cell(PAUSE_END), cell(nl(-pause)), cell('-')].join(';'))
+      if (pause > 0) {
+        lines.push([...base, cell('pauze (onbetaald)'), cell(cfg.pause.start), cell(cfg.pause.end), cell(nl(-pause)), cell('-')].join(';'))
+      }
       paidTotal += hours
     } else {
       paidTotal += worked.reduce((n, r) => n + rowHours(r), 0)

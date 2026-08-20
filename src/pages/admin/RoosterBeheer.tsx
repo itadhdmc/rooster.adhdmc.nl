@@ -2,21 +2,14 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Assignment, ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
-import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday, isSingleStudentDay } from '../../utils/dates'
+import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday } from '../../utils/dates'
+import { useSettings, maxStudentsFor } from '../../hooks/useSettings'
 import { hoursBetween } from '../../utils/shiftTimes'
 
-const DEFAULT_TEMPLATES: Record<string, { start_time: string; end_time: string; duration_hours: number }> = {
-  ochtend: { start_time: '08:30', end_time: '12:30', duration_hours: 4 },
-  middag: { start_time: '12:00', end_time: '17:30', duration_hours: 5.5 },
-}
-
-// Vroege/late tijdvariant per dagdeel. De blokken sluiten op elkaar aan,
-// zodat een hele dag (ochtend + middag) op precies 9 uur uitkomt:
-// vroeg = 08:00–17:00, laat = 08:30–17:30 — zonder dubbele overlap-uren.
-const TIME_PRESETS = {
-  ochtend: { vroeg: { start: '08:00', end: '12:00' }, laat: { start: '08:30', end: '12:30' } },
-  middag:  { vroeg: { start: '12:00', end: '17:00' }, laat: { start: '12:30', end: '17:30' } },
-} as const
+// Tijden en vroeg/laat-presets komen uit app_settings (zie useSettings);
+// binnen de component worden ze afgeleid als `defaultTemplates` en `presets`.
+type Preset = { start: string; end: string }
+type TypePresets = Record<string, { vroeg: Preset; laat: Preset }>
 
 // Aanwezigheid + eventuele afwijkende werktijden per toewijzing.
 interface AssignmentMeta {
@@ -27,6 +20,7 @@ interface AssignmentMeta {
 
 export default function RoosterBeheer() {
   const { periodId } = useParams<{ periodId: string }>()
+  const { settings } = useSettings()
   const [period, setPeriod] = useState<RosterPeriod | null>(null)
   const [shifts, setShifts] = useState<ShiftWithAssignments[]>([])
   const [students, setStudents] = useState<Profile[]>([])
@@ -37,6 +31,16 @@ export default function RoosterBeheer() {
   const [meta, setMeta] = useState<Record<string, AssignmentMeta>>({})
   const [timeEdit, setTimeEdit] = useState<{ id: string; start: string; end: string } | null>(null)
   const [shiftEdit, setShiftEdit] = useState<{ id: string; start: string; end: string; max: number } | null>(null)
+
+  // Instelbare standaardtijden en vroeg/laat-presets per dagdeel.
+  const defaultTemplates = useMemo(() =>
+    Object.fromEntries(settings.shift_types.map(t =>
+      [t.key, { start_time: t.start, end_time: t.end, duration_hours: hoursBetween(t.start, t.end) }])),
+    [settings])
+  const presets: TypePresets = useMemo(() =>
+    Object.fromEntries(settings.shift_types.map(t => [t.key, { vroeg: t.early, laat: t.late }])),
+    [settings])
+  const presetFor = (type: string) => presets[type] ?? { vroeg: { start: '', end: '' }, laat: { start: '', end: '' } }
 
   useEffect(() => { loadAll() }, [periodId])
 
@@ -158,7 +162,8 @@ export default function RoosterBeheer() {
 
   // Snelkeuze: vroege of late variant voor één dagdeel.
   async function applyPreset(assignmentId: string, shiftType: 'ochtend' | 'middag', variant: 'vroeg' | 'laat') {
-    const p = TIME_PRESETS[shiftType][variant]
+    const p = presetFor(shiftType)[variant]
+    if (!p.start || !p.end) return
     setProcessing(assignmentId)
     const { error } = await supabase.from('assignments').update({
       custom_start_time: p.start,
@@ -176,7 +181,7 @@ export default function RoosterBeheer() {
     const times = (type: 'ochtend' | 'middag') =>
       variant === 'standaard'
         ? { custom_start_time: null, custom_end_time: null }
-        : { custom_start_time: TIME_PRESETS[type][variant].start, custom_end_time: TIME_PRESETS[type][variant].end }
+        : { custom_start_time: presetFor(type)[variant].start, custom_end_time: presetFor(type)[variant].end }
     setProcessing(morningId)
     const [r1, r2] = await Promise.all([
       supabase.from('assignments').update(times('ochtend')).eq('id', morningId),
@@ -235,7 +240,7 @@ export default function RoosterBeheer() {
         templates[s.shift_type] = { start_time: s.start_time, end_time: s.end_time, duration_hours: Number(s.duration_hours) }
       }
     }
-    return { ...DEFAULT_TEMPLATES, ...templates }
+    return { ...defaultTemplates, ...templates }
   }
 
   // Een ontbrekende ochtend-/middagdienst toevoegen aan de geselecteerde dag.
@@ -251,7 +256,7 @@ export default function RoosterBeheer() {
       start_time: tpl.start_time,
       end_time: tpl.end_time,
       duration_hours: tpl.duration_hours,
-      max_students: isSingleStudentDay(day) ? 1 : 2,
+      max_students: maxStudentsFor(settings, day),
     })
     if (error) alert('Dienst toevoegen mislukt: ' + error.message)
     await loadAll()
@@ -346,10 +351,10 @@ export default function RoosterBeheer() {
   function dayVariantOf(morningId: string, afternoonId: string): 'vroeg' | 'laat' | null {
     const m = meta[morningId], a = meta[afternoonId]
     const matches = (v: 'vroeg' | 'laat') =>
-      m?.custom_start_time?.slice(0, 5) === TIME_PRESETS.ochtend[v].start &&
-      m?.custom_end_time?.slice(0, 5) === TIME_PRESETS.ochtend[v].end &&
-      a?.custom_start_time?.slice(0, 5) === TIME_PRESETS.middag[v].start &&
-      a?.custom_end_time?.slice(0, 5) === TIME_PRESETS.middag[v].end
+      m?.custom_start_time?.slice(0, 5) === presetFor('ochtend')[v].start &&
+      m?.custom_end_time?.slice(0, 5) === presetFor('ochtend')[v].end &&
+      a?.custom_start_time?.slice(0, 5) === presetFor('middag')[v].start &&
+      a?.custom_end_time?.slice(0, 5) === presetFor('middag')[v].end
     return matches('vroeg') ? 'vroeg' : matches('laat') ? 'laat' : null
   }
 
@@ -552,13 +557,17 @@ export default function RoosterBeheer() {
                         <div className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
                         <span className="text-sm font-semibold text-dark truncate">{w.name}</span>
                         <span className={`text-xs ${variant ? 'font-semibold text-indigo-600' : 'text-gray-400'}`}>
-                          {variant === 'vroeg' ? '08:00 – 17:00' : variant === 'laat' ? '08:30 – 17:30' : 'standaardtijden'}
+                          {variant === 'vroeg'
+                            ? `${presetFor('ochtend').vroeg.start} – ${presetFor('middag').vroeg.end}`
+                            : variant === 'laat'
+                            ? `${presetFor('ochtend').laat.start} – ${presetFor('middag').laat.end}`
+                            : 'standaardtijden'}
                         </span>
                       </div>
                       <div className="flex gap-1.5 flex-shrink-0">
-                        <VariantBtn label="Vroeg 08:00–17:00" active={variant === 'vroeg'} disabled={busy}
+                        <VariantBtn label={`Vroeg ${presetFor('ochtend').vroeg.start}–${presetFor('middag').vroeg.end}`} active={variant === 'vroeg'} disabled={busy}
                           onClick={() => applyDayVariant(w.morningId, w.afternoonId, 'vroeg')} />
-                        <VariantBtn label="Laat 08:30–17:30" active={variant === 'laat'} disabled={busy}
+                        <VariantBtn label={`Laat ${presetFor('ochtend').laat.start}–${presetFor('middag').laat.end}`} active={variant === 'laat'} disabled={busy}
                           onClick={() => applyDayVariant(w.morningId, w.afternoonId, 'laat')} />
                         {variant && (
                           <VariantBtn label="Standaard" active={false} disabled={busy}
@@ -792,14 +801,14 @@ export default function RoosterBeheer() {
                                     <div className="w-full flex flex-wrap items-center gap-2">
                                       <span className="text-xs text-gray-500 font-medium">Snel:</span>
                                       <VariantBtn
-                                        label={`Vroeg ${TIME_PRESETS[shift.shift_type].vroeg.start}–${TIME_PRESETS[shift.shift_type].vroeg.end}`}
-                                        active={effStart === TIME_PRESETS[shift.shift_type].vroeg.start && effEnd === TIME_PRESETS[shift.shift_type].vroeg.end}
+                                        label={`Vroeg ${presetFor(shift.shift_type).vroeg.start}–${presetFor(shift.shift_type).vroeg.end}`}
+                                        active={effStart === presetFor(shift.shift_type).vroeg.start && effEnd === presetFor(shift.shift_type).vroeg.end}
                                         disabled={processing === s.assignment_id}
                                         onClick={() => applyPreset(s.assignment_id, shift.shift_type, 'vroeg')}
                                       />
                                       <VariantBtn
-                                        label={`Laat ${TIME_PRESETS[shift.shift_type].laat.start}–${TIME_PRESETS[shift.shift_type].laat.end}`}
-                                        active={effStart === TIME_PRESETS[shift.shift_type].laat.start && effEnd === TIME_PRESETS[shift.shift_type].laat.end}
+                                        label={`Laat ${presetFor(shift.shift_type).laat.start}–${presetFor(shift.shift_type).laat.end}`}
+                                        active={effStart === presetFor(shift.shift_type).laat.start && effEnd === presetFor(shift.shift_type).laat.end}
                                         disabled={processing === s.assignment_id}
                                         onClick={() => applyPreset(s.assignment_id, shift.shift_type, 'laat')}
                                       />

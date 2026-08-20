@@ -15,6 +15,8 @@ import BeschikbaarheidOverzicht from './pages/admin/BeschikbaarheidOverzicht'
 import Inzichten from './pages/admin/Inzichten'
 import Financien from './pages/admin/Financien'
 import Logboek from './pages/admin/Logboek'
+import Instellingen from './pages/admin/Instellingen'
+import { SettingsProvider } from './hooks/useSettings'
 import Inbox from './pages/Inbox'
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
@@ -57,6 +59,7 @@ function AppRoutes() {
       <Route path="/admin/inzichten" element={<ProtectedRoute adminOnly><Inzichten /></ProtectedRoute>} />
       <Route path="/admin/financien" element={<ProtectedRoute adminOnly><Financien /></ProtectedRoute>} />
       <Route path="/admin/logboek" element={<ProtectedRoute adminOnly><Logboek /></ProtectedRoute>} />
+      <Route path="/admin/instellingen" element={<ProtectedRoute adminOnly><Instellingen /></ProtectedRoute>} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -67,9 +70,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <SettingsProvider>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </SettingsProvider>
     </BrowserRouter>
   )
 }

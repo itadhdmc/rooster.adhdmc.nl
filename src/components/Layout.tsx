@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useSettings } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
 import { signOut } from '../lib/auth'
 
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
 
 export default function Layout({ children }: LayoutProps) {
   const { profile, isAdmin } = useAuth()
+  const { settings } = useSettings()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -76,9 +78,9 @@ export default function Layout({ children }: LayoutProps) {
             {/* Logo + nav links */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3 flex-shrink-0">
-                <img src="/logo.png" alt="ADHDMC" className="h-12 w-auto" />
+                <img src="/logo.png" alt={settings.org_name} className="h-12 w-auto" />
                 <div className="hidden sm:block">
-                  <p className="text-white font-bold text-sm leading-tight">ADHDMC</p>
+                  <p className="text-white font-bold text-sm leading-tight">{settings.org_name}</p>
                   <p className="text-white/50 text-xs leading-tight">Rooster</p>
                 </div>
               </div>
@@ -215,11 +217,11 @@ export default function Layout({ children }: LayoutProps) {
 
       <footer className="border-t border-gray-100 mt-4">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p className="text-xs text-gray-400">ADHD Medisch Centrum · Roostersysteem</p>
+          <p className="text-xs text-gray-400">{settings.org_name} · Roostersysteem</p>
           <p className="text-xs text-gray-400">
             Vragen of problemen?{' '}
-            <a href="mailto:ictservicedesk@adhdmc.nl" className="font-semibold text-dark hover:text-salmon-500 transition-colors">
-              ictservicedesk@adhdmc.nl
+            <a href={`mailto:${settings.support_email}`} className="font-semibold text-dark hover:text-salmon-500 transition-colors">
+              {settings.support_email}
             </a>
           </p>
         </div>

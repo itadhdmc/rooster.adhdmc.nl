@@ -1,7 +1,8 @@
 import { signInWithGoogle } from '../lib/auth'
-import { ALLOWED_DOMAIN } from '../lib/supabase'
+import { useSettings } from '../hooks/useSettings'
 
 export default function Login() {
+  const { settings } = useSettings()
   async function handleLogin() {
     try {
       await signInWithGoogle()
@@ -18,7 +19,7 @@ export default function Login() {
         className="hidden lg:flex flex-col justify-between w-1/2 p-12"
         style={{ backgroundColor: '#3c3c3b' }}
       >
-        <img src="/logo.png" alt="ADHDMC" className="h-56 w-auto self-start object-contain" />
+        <img src="/logo.png" alt={settings.org_name} className="h-56 w-auto self-start object-contain" />
         <div>
           <h2 className="text-4xl font-bold text-white leading-snug mb-4">
             Roosterbeheer<br />voor de studentenpool
@@ -28,7 +29,7 @@ export default function Login() {
           </p>
         </div>
         <p className="text-white/30 text-sm">
-          ADHD Medisch Centrum &copy; {new Date().getFullYear()}
+          {settings.org_name} &copy; {new Date().getFullYear()}
         </p>
       </div>
 
@@ -37,14 +38,14 @@ export default function Login() {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="lg:hidden mb-10 text-center">
-            <img src="/logo.png" alt="ADHDMC" className="h-14 w-auto mx-auto mb-3" />
+            <img src="/logo.png" alt={settings.org_name} className="h-14 w-auto mx-auto mb-3" />
             <p className="text-sm text-gray-500">Zorgadministratie Rooster</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-lg p-8">
             <h1 className="text-2xl font-bold text-dark mb-1">Inloggen</h1>
             <p className="text-gray-500 text-sm mb-8">
-              Gebruik je <strong>@{ALLOWED_DOMAIN}</strong> account
+              Gebruik je <strong>@{settings.allowed_domain}</strong> account
             </p>
 
             <button
@@ -56,7 +57,7 @@ export default function Login() {
             </button>
 
             <p className="text-xs text-gray-400 text-center mt-6 leading-relaxed">
-              Alleen toegankelijk voor medewerkers van ADHDMC.<br />
+              Alleen toegankelijk voor medewerkers van {settings.org_name}.<br />
               Problemen? Neem contact op met de beheerder.
             </p>
           </div>

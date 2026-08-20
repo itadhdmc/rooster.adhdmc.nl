@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { RosterPeriod, Profile } from '../../types'
-import { monthLabel, isoWeek, isSaturdayISO } from '../../utils/dates'
+import { monthLabel, isoWeek } from '../../utils/dates'
 import { rowHours, dayPaidHours } from '../../utils/paidHours'
+import { useSettings, pauseConfig, isPremiumDate } from '../../hooks/useSettings'
 
 // Assignment-rij zoals de query die teruggeeft (met geneste dienst).
 interface FinRow {
@@ -38,11 +39,12 @@ interface WeekFin {
   saturdayHours: number
 }
 
-const KLEUR_WEEK = '#3c3c3b'
-const KLEUR_ZATERDAG = '#f87369'
-
 export default function Financien() {
+  const { settings } = useSettings()
   const [searchParams] = useSearchParams()
+  const kleurWeek = settings.color_dark
+  const kleurToeslag = settings.color_primary
+  const toeslagLabel = settings.premium_label
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null)
   const [students, setStudents] = useState<StudentFin[]>([])
@@ -97,7 +99,7 @@ export default function Financien() {
       if (att === 'ziek') { t.sickHours += hours; continue }
       if (att === 'afwezig') { t.absentHours += hours; continue }
       t.shifts += 1
-      if (isSaturdayISO(row.shifts.shift_date)) t.saturdayShifts += 1
+      if (isPremiumDate(settings, row.shifts.shift_date)) t.saturdayShifts += 1
       const key = `${row.user_id}|${row.shifts.shift_date}`
       if (!dayGroups.has(key)) dayGroups.set(key, [])
       dayGroups.get(key)!.push(row)
@@ -106,8 +108,8 @@ export default function Financien() {
     for (const [key, dayRows] of dayGroups) {
       const [userId, date] = key.split('|')
       const t = totalsFor(userId)
-      const { hours, pause } = dayRows.length > 1 ? dayPaidHours(dayRows) : { hours: rowHours(dayRows[0]), pause: 0 }
-      const sat = isSaturdayISO(date)
+      const { hours, pause } = dayRows.length > 1 ? dayPaidHours(dayRows, pauseConfig(settings)) : { hours: rowHours(dayRows[0]), pause: 0 }
+      const sat = isPremiumDate(settings, date)
       if (sat) t.saturdayHours += hours
       else t.weekdayHours += hours
       t.pauseHours += pause
@@ -176,7 +178,7 @@ export default function Financien() {
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Totaal verloonde uren" value={`${nl1(totalWeekday + totalSaturday)}u`} color="text-dark" />
-            <StatCard label="Waarvan zaterdag (toeslag)" value={`${nl1(totalSaturday)}u`} color="text-salmon-500" accent />
+            <StatCard label={`Waarvan ${toeslagLabel} (toeslag)`} value={`${nl1(totalSaturday)}u`} color="text-salmon-500" accentColor={kleurToeslag} />
             <StatCard label="Pauze-uren afgetrokken" value={`−${nl1(totalPause)}u`} color="text-gray-500" />
             <StatCard label="Ziekte-uren" value={`${nl1(totalSick)}u`} color={totalSick > 0 ? 'text-rose-500' : 'text-dark'} />
           </div>
@@ -201,16 +203,16 @@ export default function Financien() {
                         <span className="text-xs font-bold text-dark mb-1">{nl1(total)}u</span>
                         <div className="w-full max-w-[56px] flex flex-col justify-end rounded-t-lg overflow-hidden" style={{ height: `${(total / maxWeek) * 100}%` }}>
                           {w.saturdayHours > 0 && (
-                            <div title={`Zaterdag: ${nl1(w.saturdayHours)}u`} style={{ backgroundColor: KLEUR_ZATERDAG, height: `${(w.saturdayHours / total) * 100}%` }} />
+                            <div title={`${toeslagLabel}: ${nl1(w.saturdayHours)}u`} style={{ backgroundColor: kleurToeslag, height: `${(w.saturdayHours / total) * 100}%` }} />
                           )}
-                          <div title={`Doordeweeks: ${nl1(w.weekdayHours)}u`} style={{ backgroundColor: KLEUR_WEEK, height: `${(w.weekdayHours / total) * 100}%` }} />
+                          <div title={`Doordeweeks: ${nl1(w.weekdayHours)}u`} style={{ backgroundColor: kleurWeek, height: `${(w.weekdayHours / total) * 100}%` }} />
                         </div>
                         <span className="text-[10px] font-semibold text-gray-400 mt-1.5">Wk {w.week}</span>
                       </div>
                     )
                   })}
                 </div>
-                <Legenda />
+                <Legenda week={kleurWeek} toeslag={kleurToeslag} label={toeslagLabel} />
               </div>
 
               {/* Grafiek: uren per medewerker */}
@@ -226,19 +228,19 @@ export default function Financien() {
                           <span className="text-sm font-semibold text-dark truncate">{r.profile.full_name || r.profile.email}</span>
                           <span className="text-xs text-gray-400 flex-shrink-0">
                             <span className="font-bold text-dark">{nl1(total)}u</span>
-                            {r.saturdayHours > 0 && <> · za {nl1(r.saturdayHours)}u</>}
+                            {r.saturdayHours > 0 && <> · {toeslagLabel} {nl1(r.saturdayHours)}u</>}
                             {r.pauseHours > 0 && <> · pauze −{nl1(r.pauseHours)}u</>}
                           </span>
                         </div>
                         <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex" style={{ width: '100%' }}>
-                          <div title={`Doordeweeks: ${nl1(r.weekdayHours)}u`} style={{ backgroundColor: KLEUR_WEEK, width: `${(r.weekdayHours / maxStudent) * 100}%` }} />
-                          <div title={`Zaterdag: ${nl1(r.saturdayHours)}u`} style={{ backgroundColor: KLEUR_ZATERDAG, width: `${(r.saturdayHours / maxStudent) * 100}%` }} />
+                          <div title={`Doordeweeks: ${nl1(r.weekdayHours)}u`} style={{ backgroundColor: kleurWeek, width: `${(r.weekdayHours / maxStudent) * 100}%` }} />
+                          <div title={`${toeslagLabel}: ${nl1(r.saturdayHours)}u`} style={{ backgroundColor: kleurToeslag, width: `${(r.saturdayHours / maxStudent) * 100}%` }} />
                         </div>
                       </div>
                     )
                   })}
                 </div>
-                <Legenda />
+                <Legenda week={kleurWeek} toeslag={kleurToeslag} label={toeslagLabel} />
               </div>
 
               {/* Tabel: zelfde cijfers als de export */}
@@ -253,9 +255,9 @@ export default function Financien() {
                       <tr className="text-left text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
                         <th className="px-5 py-2.5 font-semibold">Naam</th>
                         <th className="px-3 py-2.5 font-semibold text-right">Diensten</th>
-                        <th className="px-3 py-2.5 font-semibold text-right">Za-diensten</th>
+                        <th className="px-3 py-2.5 font-semibold text-right">Toeslagdiensten</th>
                         <th className="px-3 py-2.5 font-semibold text-right">Doordeweeks</th>
-                        <th className="px-3 py-2.5 font-semibold text-right">Zaterdag</th>
+                        <th className="px-3 py-2.5 font-semibold text-right capitalize">{toeslagLabel}</th>
                         <th className="px-3 py-2.5 font-semibold text-right">Pauze</th>
                         <th className="px-3 py-2.5 font-semibold text-right">Verloond</th>
                         <th className="px-3 py-2.5 font-semibold text-right">Ziek (u)</th>
@@ -269,7 +271,7 @@ export default function Financien() {
                           <td className="px-3 py-2.5 text-right text-gray-500">{r.shifts}</td>
                           <td className="px-3 py-2.5 text-right text-gray-500">{r.saturdayShifts}</td>
                           <td className="px-3 py-2.5 text-right text-gray-500">{nl1(r.weekdayHours)}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold" style={{ color: KLEUR_ZATERDAG }}>{nl1(r.saturdayHours)}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold" style={{ color: kleurToeslag }}>{nl1(r.saturdayHours)}</td>
                           <td className="px-3 py-2.5 text-right text-gray-400">{r.pauseHours > 0 ? `−${nl1(r.pauseHours)}` : '—'}</td>
                           <td className="px-3 py-2.5 text-right font-bold text-dark">{nl1(r.weekdayHours + r.saturdayHours)}</td>
                           <td className="px-3 py-2.5 text-right text-rose-500">{r.sickHours > 0 ? nl1(r.sickHours) : '—'}</td>
@@ -281,7 +283,7 @@ export default function Financien() {
                         <td className="px-3 py-2.5 text-right font-semibold text-gray-500">{students.reduce((n, r) => n + r.shifts, 0)}</td>
                         <td className="px-3 py-2.5 text-right font-semibold text-gray-500">{students.reduce((n, r) => n + r.saturdayShifts, 0)}</td>
                         <td className="px-3 py-2.5 text-right font-semibold text-gray-500">{nl1(totalWeekday)}</td>
-                        <td className="px-3 py-2.5 text-right font-bold" style={{ color: KLEUR_ZATERDAG }}>{nl1(totalSaturday)}</td>
+                        <td className="px-3 py-2.5 text-right font-bold" style={{ color: kleurToeslag }}>{nl1(totalSaturday)}</td>
                         <td className="px-3 py-2.5 text-right font-semibold text-gray-400">−{nl1(totalPause)}</td>
                         <td className="px-3 py-2.5 text-right font-bold text-dark">{nl1(totalWeekday + totalSaturday)}</td>
                         <td className="px-3 py-2.5 text-right font-semibold text-rose-500">{nl1(totalSick)}</td>
@@ -293,8 +295,10 @@ export default function Financien() {
               </div>
 
               <p className="text-[11px] text-gray-400">
-                Pauzeregel: wie op één dag beide dagdelen werkt krijgt de onbetaalde pauze (12:00–12:30, 0,5u)
-                afgetrokken; losse dagdelen niet. De CSV-export (knop "Uren export") gebruikt exact dezelfde berekening.
+                {settings.pause_enabled
+                  ? `Pauzeregel: wie op één dag beide dagdelen werkt krijgt de onbetaalde pauze (${settings.pause_start}–${settings.pause_end}) afgetrokken; losse dagdelen niet. `
+                  : 'Er is geen onbetaalde pauze ingesteld. '}
+                De CSV-export (knop "Uren export") gebruikt exact dezelfde berekening.
               </p>
             </>
           )}
@@ -308,23 +312,23 @@ function nl1(n: number): string {
   return (Math.round(n * 10) / 10).toString().replace('.', ',')
 }
 
-function Legenda() {
+function Legenda({ week, toeslag, label }: { week: string; toeslag: string; label: string }) {
   return (
     <div className="flex gap-4 text-xs text-gray-400 mt-4">
       <span className="flex items-center gap-1.5">
-        <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: KLEUR_WEEK }} /> Doordeweeks
+        <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: week }} /> Doordeweeks
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: KLEUR_ZATERDAG }} /> Zaterdag (toeslag)
+        <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: toeslag }} /> <span className="capitalize">{label}</span> (toeslag)
       </span>
     </div>
   )
 }
 
-function StatCard({ label, value, color, accent }: { label: string; value: string; color: string; accent?: boolean }) {
+function StatCard({ label, value, color, accentColor }: { label: string; value: string; color: string; accentColor?: string }) {
   return (
     <div className="card p-4">
-      <p className={`text-2xl font-bold ${color}`} style={accent ? { color: KLEUR_ZATERDAG } : {}}>{value}</p>
+      <p className={`text-2xl font-bold ${color}`} style={accentColor ? { color: accentColor } : {}}>{value}</p>
       <p className="text-xs text-gray-400 mt-1">{label}</p>
     </div>
   )

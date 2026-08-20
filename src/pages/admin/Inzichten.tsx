@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { RosterPeriod, Profile, ShiftWithAssignments } from '../../types'
 import { monthLabel, formatDate } from '../../utils/dates'
 import { rowHours, dayPaidHours } from '../../utils/paidHours'
+import { useSettings, pauseConfig } from '../../hooks/useSettings'
 
 // Assignment-rij zoals de inzichten-query die teruggeeft (met geneste dienst).
 interface InsightAssignmentRow {
@@ -30,6 +31,7 @@ interface StudentRow {
 }
 
 export default function Inzichten() {
+  const { settings } = useSettings()
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<RosterPeriod | null>(null)
   const [shifts, setShifts] = useState<ShiftWithAssignments[]>([])
@@ -86,9 +88,10 @@ export default function Inzichten() {
       if (!dayGroups.has(key)) dayGroups.set(key, [])
       dayGroups.get(key)!.push(row)
     }
+    const pause = pauseConfig(settings)
     for (const [key, dayRows] of dayGroups) {
       const userId = key.split('|')[0]
-      totals.get(userId)!.hours += dayRows.length > 1 ? dayPaidHours(dayRows).hours : rowHours(dayRows[0])
+      totals.get(userId)!.hours += dayRows.length > 1 ? dayPaidHours(dayRows, pause).hours : rowHours(dayRows[0])
     }
     const rows = ((p || []) as Profile[]).map(profile => ({
       profile,
@@ -212,8 +215,9 @@ export default function Inzichten() {
             <div className="px-5 py-3.5 border-b border-gray-100">
               <h2 className="font-bold text-dark text-sm">Uren en aanwezigheid per medewerker</h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Verloonde uren t.o.v. het maandcontract — de onbetaalde pauze (12:00–12:30) van hele
-                dagen is al afgetrokken, net als in de urenexport. Ziek en afwezig tellen niet mee.
+                Verloonde uren t.o.v. het maandcontract
+                {settings.pause_enabled && ` — de onbetaalde pauze (${settings.pause_start}–${settings.pause_end}) van hele dagen is al afgetrokken, net als in de urenexport`}.
+                Ziek en afwezig tellen niet mee.
               </p>
             </div>
             <div className="divide-y divide-gray-50">

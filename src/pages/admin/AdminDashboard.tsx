@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { RosterPeriod, Profile, SwapDetail } from '../../types'
 import { monthLabel, dateToISO } from '../../utils/dates'
-import { exportPeriodHours, exportPeriodDetails, ExportRange } from '../../utils/export'
+import { exportPeriodHours, exportPeriodDetails, ExportRange, ExportConfig } from '../../utils/export'
+import { useSettings, pauseConfig, isPremiumDate } from '../../hooks/useSettings'
 
 // Eerste en laatste dag van de maand van een periode (ISO).
 function monthBounds(period: RosterPeriod): { start: string; end: string } {
@@ -13,6 +14,7 @@ function monthBounds(period: RosterPeriod): { start: string; end: string } {
 }
 
 export default function AdminDashboard() {
+  const { settings } = useSettings()
   const [periods, setPeriods] = useState<RosterPeriod[]>([])
   const [students, setStudents] = useState<Profile[]>([])
   const [stats, setStats] = useState({ totalShifts: 0, openShifts: 0, assignedShifts: 0 })
@@ -69,9 +71,14 @@ export default function AdminDashboard() {
       return
     }
     setExporting(kind)
+    const cfg: ExportConfig = {
+      pause: pauseConfig(settings),
+      premiumLabel: settings.premium_label,
+      isPremium: iso => isPremiumDate(settings, iso),
+    }
     const res = kind === 'overzicht'
-      ? await exportPeriodHours(exportPeriod, expRange)
-      : await exportPeriodDetails(exportPeriod, expRange)
+      ? await exportPeriodHours(exportPeriod, expRange, cfg)
+      : await exportPeriodDetails(exportPeriod, expRange, cfg)
     setExporting(null)
     if (!res.ok) alert(res.message || 'Export mislukt.')
   }
@@ -121,6 +128,7 @@ export default function AdminDashboard() {
         <QuickLink to="/admin/inzichten" title="Inzichten" desc="Bezetting, uren en ziekte" icon={<ChartIcon />} accent="#0ea5e9" />
         <QuickLink to="/admin/financien" title="Financieel" desc="Verloonde uren, toeslag en pauzes" icon={<EuroIcon />} accent="#10b981" />
         <QuickLink to="/admin/logboek" title="Logboek" desc="Wie wijzigde wat, en wanneer" icon={<HistoryIcon />} accent="#a855f7" />
+        <QuickLink to="/admin/instellingen" title="Instellingen" desc="Organisatie, regels en diensttijden" icon={<GearIcon />} accent="#64748b" />
       </div>
 
       {/* Pending swap approvals */}
@@ -456,6 +464,15 @@ function GridIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18" />
+    </svg>
+  )
+}
+
+function GearIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     </svg>
   )
 }

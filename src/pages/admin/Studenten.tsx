@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Profile } from '../../types'
-import { ALLOWED_DOMAIN } from '../../lib/supabase'
+import { useSettings } from '../../hooks/useSettings'
 import { useAuth } from '../../hooks/useAuth'
 
 interface PendingStudent {
@@ -12,6 +12,7 @@ interface PendingStudent {
 }
 
 export default function Studenten() {
+  const { settings } = useSettings()
   const { profile: me } = useAuth()
   const [students, setStudents] = useState<Profile[]>([])
   const [pending, setPending] = useState<PendingStudent[]>([])
@@ -69,8 +70,8 @@ export default function Studenten() {
     const name = inviteName.trim()
 
     if (!name) { setInviteError('Voer een naam in.'); return }
-    if (!email || !email.endsWith(`@${ALLOWED_DOMAIN}`)) {
-      setInviteError(`Gebruik een @${ALLOWED_DOMAIN} e-mailadres.`)
+    if (!email || !email.endsWith(`@${settings.allowed_domain}`)) {
+      setInviteError(`Gebruik een @${settings.allowed_domain} e-mailadres.`)
       return
     }
 
@@ -201,7 +202,7 @@ export default function Studenten() {
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
               Voeg een student toe zodat ze al in het systeem staan vóór hun eerste login.
-              Zodra ze inloggen met hun @{ALLOWED_DOMAIN} account worden ze automatisch gekoppeld.
+              Zodra ze inloggen met hun @{settings.allowed_domain} account worden ze automatisch gekoppeld.
             </p>
 
             <div>
@@ -219,7 +220,7 @@ export default function Studenten() {
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">E-mailadres</label>
               <input
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-salmon-400"
-                placeholder={`naam@${ALLOWED_DOMAIN}`}
+                placeholder={`naam@${settings.allowed_domain}`}
                 type="email"
                 value={inviteEmail}
                 onChange={e => setInviteEmail(e.target.value)}
