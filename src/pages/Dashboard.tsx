@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useSettings, shiftTypeConfig } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
-import { RosterPeriod, Shift, Assignment, AssignmentWithShiftJoin } from '../types'
+import { RosterPeriod, Shift, AssignmentWithShiftJoin } from '../types'
 import { monthLabel, formatDate } from '../utils/dates'
 import { effectiveShift } from '../utils/shiftTimes'
 
 interface UpcomingShift {
   shift: Shift
-  assigned_at: string
+  shiftId: string
 }
 
 export default function Dashboard() {
   const { profile, loading: authLoading } = useAuth()
+  const { settings } = useSettings()
   const [activePeriod, setActivePeriod] = useState<RosterPeriod | null>(null)
-  const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [reserveCount, setReserveCount] = useState(0)
   const [upcomingShifts, setUpcomingShifts] = useState<UpcomingShift[]>([])
+  const [nextMates, setNextMates] = useState<string[]>([])
+  const [availableCount, setAvailableCount] = useState(0)
   const [weekHours, setWeekHours] = useState(0)
   const [monthHours, setMonthHours] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -32,56 +36,72 @@ export default function Dashboard() {
       const now = new Date()
       const year = now.getFullYear()
       const month = now.getMonth() + 1
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      const todayISO = today.toISOString().split('T')[0]
 
       const [{ data: periods }, { data: assignmentRows }] = await Promise.all([
-        supabase.from('roster_periods').select('*').eq('year', year).order('month'),
+        supabase.from('roster_periods').select('*').order('year').order('month'),
         supabase.from('assignments').select('*, shifts(*)').eq('user_id', profile!.id),
       ])
       const assignments = (assignmentRows || []) as AssignmentWithShiftJoin[]
 
-      const openPeriod = periods?.find(p => p.availability_open || p.second_round_open)
-      setActivePeriod(openPeriod || periods?.[0] || null)
+      const openPeriod = (periods || []).find(p => p.availability_open || p.second_round_open) || null
+      setActivePeriod(openPeriod)
 
-      if (assignments.length > 0) {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const weekEnd = new Date(today)
-        weekEnd.setDate(weekEnd.getDate() + 7)
+      setPendingCount(assignments.filter(a => a.status === 'pending').length)
+      setReserveCount(assignments.filter(a =>
+        a.status === 'reserve' && a.shifts && a.shifts.shift_date >= todayISO).length)
 
-        // Pending = aangevraagd, wacht op goedkeuring
-        const pending = assignments.filter(a => a.status === 'pending')
-        setPendingAssignments(pending)
+      // Aankomende goedgekeurde diensten (met afwijkende tijden verwerkt).
+      const upcoming = assignments
+        .filter(a => a.shifts && a.shifts.shift_date >= todayISO && a.status === 'approved')
+        .sort((a, b) => a.shifts!.shift_date.localeCompare(b.shifts!.shift_date)
+          || a.shifts!.start_time.localeCompare(b.shifts!.start_time))
+        .map(a => ({ shift: effectiveShift(a.shifts!, a), shiftId: a.shift_id }))
+      setUpcomingShifts(upcoming)
 
-        // Reserve = op de reservelijst voor een toekomstige dienst
-        setReserveCount(assignments.filter(a =>
-          a.status === 'reserve' && a.shifts && new Date(a.shifts.shift_date) >= today).length)
-
-        // Upcoming = goedgekeurde toekomstige diensten
-        const upcoming = assignments
-          .filter(a => a.shifts && new Date(a.shifts.shift_date) >= today && a.status === 'approved')
-          .sort((a, b) => a.shifts!.shift_date.localeCompare(b.shifts!.shift_date))
-          .slice(0, 5)
-          .map(a => ({ shift: effectiveShift(a.shifts!, a), assigned_at: a.assigned_at }))
-
-        setUpcomingShifts(upcoming)
-
-        // Uren tellen (alleen goedgekeurde)
-        let wh = 0, mh = 0
-        for (const a of assignments) {
-          if (a.status !== 'approved') continue
-          const raw = a.shifts
-          if (!raw) continue
-          const shift = effectiveShift(raw, a)
-          const d = new Date(shift.shift_date)
-          if (d >= today && d <= weekEnd) wh += Number(shift.duration_hours)
-          if (d.getFullYear() === year && d.getMonth() + 1 === month) mh += Number(shift.duration_hours)
-        }
-        setWeekHours(wh)
-        setMonthHours(mh)
+      // Wie werkt er mee op de eerstvolgende dienst?
+      if (upcoming.length > 0) {
+        const { data: mates } = await supabase
+          .from('shifts_with_assignments')
+          .select('assigned_students')
+          .eq('id', upcoming[0].shiftId)
+          .maybeSingle()
+        setNextMates(((mates?.assigned_students || []) as { status: string; user_id: string; full_name: string; email: string }[])
+          .filter(s => s.status === 'approved' && s.user_id !== profile!.id)
+          .map(s => (s.full_name || s.email).split(' ')[0]))
       } else {
-        setPendingAssignments([])
-        setReserveCount(0)
+        setNextMates([])
       }
+
+      // Hoeveel diensten kun je nog aanmelden in de open periode?
+      if (openPeriod) {
+        const { data: open } = await supabase
+          .from('shifts_with_assignments')
+          .select('id, open_spots, shift_date')
+          .eq('period_id', openPeriod.id)
+          .gt('open_spots', 0)
+          .gte('shift_date', todayISO)
+        const mine = new Set(assignments.map(a => a.shift_id))
+        setAvailableCount((open || []).filter(s => !mine.has(s.id)).length)
+      } else {
+        setAvailableCount(0)
+      }
+
+      // Uren: deze kalenderweek (ma–zo) en deze maand.
+      const dow = today.getDay()
+      const monday = new Date(today); monday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow))
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+      let wh = 0, mh = 0
+      for (const a of assignments) {
+        if (a.status !== 'approved' || !a.shifts) continue
+        const shift = effectiveShift(a.shifts, a)
+        const d = new Date(shift.shift_date + 'T00:00:00')
+        if (d >= monday && d <= sunday) wh += Number(shift.duration_hours)
+        if (d.getFullYear() === year && d.getMonth() + 1 === month) mh += Number(shift.duration_hours)
+      }
+      setWeekHours(wh)
+      setMonthHours(mh)
     } catch (err) {
       console.error('Dashboard fout:', err)
     } finally {
@@ -89,14 +109,7 @@ export default function Dashboard() {
     }
   }
 
-  if (authLoading || loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-      </div>
-    )
-  }
+  if (authLoading || loading) return <Spinner />
 
   if (!profile) {
     return (
@@ -106,156 +119,174 @@ export default function Dashboard() {
     )
   }
 
-  const isOpenPeriod = activePeriod && (activePeriod.availability_open || activePeriod.second_round_open)
+  const next = upcomingShifts[0]
+  const weekMin = Number(profile.contract_min_hours)
+  const weekMax = Number(profile.contract_max_hours)
+  const monthMax = Math.round(weekMax * settings.monthly_cap_factor * 10) / 10
+  const nl = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',')
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 max-w-3xl">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark">
-            Hallo, {profile.full_name?.split(' ')[0] || 'daar'}
-          </h1>
-          <p className="text-gray-400 text-sm mt-0.5">
-            {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+      <div>
+        <h1 className="text-2xl font-bold text-dark">
+          Hallo, {profile.full_name?.split(' ')[0] || 'daar'}
+        </h1>
+        <p className="text-gray-400 text-sm mt-0.5 capitalize">
+          {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+
+      {/* Hero: je volgende dienst */}
+      {next ? (
+        <div className="rounded-xl p-6 text-white" style={{ backgroundColor: 'var(--color-dark)' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-white/40">Je volgende dienst</p>
+          <p className="text-xl font-semibold mt-2 capitalize">{formatDate(next.shift.shift_date)}</p>
+          <p className="text-white/70 text-sm mt-1">
+            {next.shift.start_time.slice(0, 5)} – {next.shift.end_time.slice(0, 5)}
+            {' · '}{shiftTypeConfig(settings, next.shift.shift_type).label}dienst
+            {nextMates.length > 0 && <> · Met {nextMates.join(' en ')}</>}
           </p>
-        </div>
-      </div>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Uren deze week" value={`${weekHours}u`} accent="var(--color-primary)" />
-        <StatCard label="Uren deze maand" value={`${monthHours}u`} accent="var(--color-dark)" />
-        <StatCard label="Contract min" value={`${profile.contract_min_hours}u/w`} accent="#9ca3af" />
-        <StatCard label="Contract max" value={`${profile.contract_max_hours}u/w`} accent="#9ca3af" />
-      </div>
-
-      {/* Pending aanvragen banner */}
-      {pendingAssignments.length > 0 && (
-        <div className="card p-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-              <div className="w-3 h-3 rounded-full bg-amber-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-dark text-sm">
-                {pendingAssignments.length} dienst{pendingAssignments.length !== 1 ? 'en' : ''} aangevraagd
-              </p>
-              <p className="text-gray-400 text-xs mt-0.5">Wacht op goedkeuring van de admin.</p>
-            </div>
-          </div>
-          <Link to="/beschikbaarheid"
-            className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-100 text-gray-500 hover:bg-gray-50 transition-colors">
-            Bekijken
+          <Link to="/mijn-rooster" className="inline-block mt-4 text-sm font-semibold text-white/90 hover:text-white border border-white/25 hover:border-white/50 px-4 py-2 rounded-xl transition-colors">
+            Bekijk je rooster →
           </Link>
+        </div>
+      ) : (
+        <div className="rounded-xl p-6 text-white" style={{ backgroundColor: 'var(--color-dark)' }}>
+          <p className="text-xl font-semibold">Je hebt nog geen dienst ingepland</p>
+          <p className="text-white/60 text-sm mt-1">
+            {availableCount > 0
+              ? `Er ${availableCount === 1 ? 'is 1 dienst' : `zijn ${availableCount} diensten`} waarvoor je je kunt aanmelden.`
+              : activePeriod
+              ? 'Alle beschikbare diensten zijn op dit moment gevuld.'
+              : 'Er is momenteel geen open inschrijving.'}
+          </p>
+          {availableCount > 0 && (
+            <Link to="/beschikbaarheid" className="inline-block mt-4 text-sm font-bold px-4 py-2 rounded-xl text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: 'var(--color-primary)' }}>
+              Bekijk beschikbare diensten →
+            </Link>
+          )}
         </div>
       )}
 
-      {/* Reservelijst banner */}
-      {reserveCount > 0 && (
-        <div className="card p-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
-              <div className="w-3 h-3 rounded-full bg-sky-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-dark text-sm">
-                Reservelijst: {reserveCount} dienst{reserveCount !== 1 ? 'en' : ''}
-              </p>
-              <p className="text-gray-400 text-xs mt-0.5">Word je ingepland, dan krijg je een melding en e-mail.</p>
-            </div>
-          </div>
-          <Link to="/mijn-rooster"
-            className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-100 text-gray-500 hover:bg-gray-50 transition-colors">
-            Bekijken
-          </Link>
+      {/* Uren: begrijpelijk, met context */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="card p-5">
+          <p className="text-sm font-semibold text-dark">Deze week</p>
+          <p className="text-[13px] text-gray-400 mt-0.5">
+            <span className="font-semibold text-dark">{nl(weekHours)}</span> van {weekMin}–{weekMax} contracturen ingepland
+          </p>
+          <ProgressBar value={weekHours} max={weekMax} marker={weekMin} />
         </div>
-      )}
+        <div className="card p-5">
+          <p className="text-sm font-semibold text-dark">Deze maand</p>
+          <p className="text-[13px] text-gray-400 mt-0.5">
+            <span className="font-semibold text-dark">{nl(monthHours)}</span> uur ingepland
+            {monthHours < monthMax && <> · nog {nl(monthMax - monthHours)} uur mogelijk</>}
+          </p>
+          <ProgressBar value={monthHours} max={monthMax} />
+        </div>
+      </div>
 
-      {/* Open periode banner */}
-      {isOpenPeriod && activePeriod && pendingAssignments.length === 0 && upcomingShifts.length === 0 && (
-        <div className="rounded-2xl p-5 flex items-start justify-between gap-4" style={{ backgroundColor: 'var(--color-primary)' }}>
+      {/* Open inschrijving */}
+      {activePeriod && (
+        <div className="card px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <p className="font-bold text-white text-base">
-              {activePeriod.second_round_open ? '2e ronde open' : 'Diensten beschikbaar om je voor in te schrijven'}
+            <p className="text-sm font-semibold text-dark capitalize">
+              {monthLabel(activePeriod.year, activePeriod.month)}-inschrijving is geopend
             </p>
-            <p className="text-white/80 text-sm mt-1">
-              Schrijf je in voor de diensten die je wilt werken in {monthLabel(activePeriod.year, activePeriod.month)}.
+            <p className="text-[13px] text-gray-400 mt-0.5">
+              {availableCount > 0 ? `Nog ${availableCount} dienst${availableCount !== 1 ? 'en' : ''} beschikbaar` : 'Alle diensten zijn gevuld'}
+              {activePeriod.availability_deadline && (
+                <> · sluit op {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', {
+                  day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+                })}</>
+              )}
             </p>
-            {activePeriod.availability_deadline && (
-              <p className="text-white/60 text-xs mt-1">
-                Deadline: {new Date(activePeriod.availability_deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            )}
           </div>
-          <Link to="/beschikbaarheid"
-            className="flex-shrink-0 bg-white font-semibold text-sm px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors"
-            style={{ color: 'var(--color-primary)' }}>
-            Inschrijven →
+          <Link to="/beschikbaarheid" className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--color-primary)' }}>
+            Diensten bekijken →
           </Link>
+        </div>
+      )}
+
+      {/* Aandacht nodig */}
+      {(pendingCount > 0 || reserveCount > 0) && (
+        <div className="card divide-y divide-gray-50">
+          {pendingCount > 0 && (
+            <Link to="/mijn-rooster" className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors">
+              <div>
+                <p className="text-sm font-medium text-dark">
+                  {pendingCount} aanmelding{pendingCount !== 1 ? 'en' : ''} wacht{pendingCount === 1 ? '' : 'en'} op goedkeuring
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">Je hoort het zodra de planning ze beoordeelt.</p>
+              </div>
+              <span className="text-gray-300">→</span>
+            </Link>
+          )}
+          {reserveCount > 0 && (
+            <Link to="/mijn-rooster" className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors">
+              <div>
+                <p className="text-sm font-medium text-dark">
+                  Je staat op de reservelijst voor {reserveCount} dienst{reserveCount !== 1 ? 'en' : ''}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">Word je ingepland, dan krijg je een melding en e-mail.</p>
+              </div>
+              <span className="text-gray-300">→</span>
+            </Link>
+          )}
         </div>
       )}
 
       {/* Aankomende diensten */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-dark text-base">Aankomende diensten</h2>
-          <Link to="/mijn-rooster" className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>
-            Alles bekijken →
-          </Link>
-        </div>
-
-        {upcomingShifts.length === 0 ? (
-          <div className="card p-8 text-center">
-            <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <p className="text-gray-500 font-medium">Nog geen goedgekeurde diensten</p>
-            <p className="text-gray-400 text-sm mt-1">
-              {pendingAssignments.length > 0
-                ? 'De admin keurt je aanvragen binnenkort goed.'
-                : isOpenPeriod ? 'Schrijf je in voor diensten via de knop hierboven.' : 'Er zijn momenteel geen open periodes.'}
-            </p>
+      {upcomingShifts.length > 1 && (
+        <div>
+          <div className="flex items-center justify-between mb-2.5">
+            <h2 className="font-semibold text-dark text-sm">Daarna</h2>
+            <Link to="/mijn-rooster" className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>
+              Alles bekijken →
+            </Link>
           </div>
-        ) : (
-          <div className="card overflow-hidden">
-            <div className="divide-y divide-gray-50">
-              {upcomingShifts.map(({ shift }) => (
-                <div key={shift.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
-                      style={{ backgroundColor: shift.shift_type === 'ochtend' ? 'var(--color-primary)' : 'var(--color-dark)' }}>
-                      {new Date(shift.shift_date).getDate()}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-dark capitalize text-sm">{formatDate(shift.shift_date)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} · {shift.duration_hours}u
-                      </p>
-                    </div>
-                  </div>
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${
-                    shift.shift_type === 'ochtend' ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'
-                  }`}>
-                    {shift.shift_type}
-                  </span>
+          <div className="card overflow-hidden divide-y divide-gray-50">
+            {upcomingShifts.slice(1, 5).map(({ shift }) => (
+              <div key={shift.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-dark capitalize text-sm">{formatDate(shift.shift_date)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)} · {String(shift.duration_hours).replace('.', ',')}u
+                  </p>
                 </div>
-              ))}
-            </div>
+                <span className="text-xs font-medium text-gray-400 capitalize">
+                  {shiftTypeConfig(settings, shift.shift_type).label}
+                </span>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+function ProgressBar({ value, max, marker }: { value: number; max: number; marker?: number }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0
+  const markerPct = marker && max > 0 ? Math.min(100, (marker / max) * 100) : null
   return (
-    <div className="card p-4">
-      <p className="text-2xl font-bold" style={{ color: accent }}>{value}</p>
-      <p className="text-xs text-gray-400 mt-1">{label}</p>
+    <div className="relative h-1.5 bg-gray-100 rounded-full mt-3 overflow-hidden">
+      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: 'var(--color-primary)' }} />
+      {markerPct !== null && markerPct > 0 && markerPct < 100 && (
+        <div className="absolute inset-y-0 w-0.5 bg-gray-300" style={{ left: `${markerPct}%` }} title={`Contractminimum: ${marker}u`} />
+      )}
+    </div>
+  )
+}
+
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
     </div>
   )
 }
