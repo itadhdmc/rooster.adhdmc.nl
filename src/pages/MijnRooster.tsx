@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useSettings } from '../hooks/useSettings'
+import { useSettings, shiftTypeConfig } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
-import { getGoogleToken } from '../lib/auth'
+import { getGoogleToken, signInWithGoogle } from '../lib/auth'
 import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
-import { Shift, Assignment, AssignmentWithShiftJoin, SwappableAssignment, ShiftType, ShiftWithAssignments } from '../types'
-import { formatDate, monthLabel, getWeeksInMonth, dateToISO } from '../utils/dates'
+import { Shift, Assignment, AssignmentWithShiftJoin, SwappableAssignment, ShiftWithAssignments } from '../types'
+import { formatDate, monthLabel } from '../utils/dates'
 import { effectiveShift } from '../utils/shiftTimes'
 
 interface AssignmentWithShift extends Assignment {
@@ -18,6 +18,8 @@ interface AssignmentWithShift extends Assignment {
 function canLeaveReserve(shift: Shift): boolean {
   return new Date(`${shift.shift_date}T${shift.start_time}`).getTime() - Date.now() > 24 * 60 * 60 * 1000
 }
+
+type Tab = 'rooster' | 'aanvragen'
 
 export default function MijnRooster() {
   const { profile } = useAuth()
@@ -35,7 +37,6 @@ export default function MijnRooster() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
   const [googleToken, setGoogleToken] = useState<string | null>(null)
-  const [tokenWarning, setTokenWarning] = useState(false)
   const [incomingSwapCount, setIncomingSwapCount] = useState(0)
   const [swapModal, setSwapModal] = useState<AssignmentWithShift | null>(null)
   const [swappable, setSwappable] = useState<SwappableAssignment[]>([])
@@ -43,13 +44,10 @@ export default function MijnRooster() {
   const [colleagues, setColleagues] = useState<Record<string, string[]>>({})
   const [loadingSwappable, setLoadingSwappable] = useState(false)
   const [swapSuccess, setSwapSuccess] = useState(false)
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('rooster')
 
   useEffect(() => {
-    getGoogleToken().then(token => {
-      setGoogleToken(token)
-      if (!token) setTokenWarning(true)
-    })
+    getGoogleToken().then(token => setGoogleToken(token))
   }, [])
 
   useEffect(() => {
@@ -59,7 +57,6 @@ export default function MijnRooster() {
   useEffect(() => {
     if (!profile) return
     setAutoSynced(false)
-    setSelectedDate(null)
     loadAssignments()
   }, [profile, selectedMonth])
 
@@ -74,7 +71,6 @@ export default function MijnRooster() {
 
   // Eenmalige, stille opschoning per gebruiker: verwijdert oude dubbele
   // agenda-afspraken (van vóór de fix) en houdt er één per dienst over.
-  // Draait automatisch op de achtergrond zodra iemand Mijn rooster opent.
   useEffect(() => {
     if (!profile || !googleToken || autoCleaned) return
     const key = `cal-cleaned-v1-${profile.id}`
@@ -89,7 +85,6 @@ export default function MijnRooster() {
     const now = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 
-    // Alle goedgekeurde diensten van deze gebruiker vanaf de huidige maand.
     const { data } = await supabase
       .from('assignments')
       .select('*, shifts(*)')
@@ -102,7 +97,6 @@ export default function MijnRooster() {
       .filter(it => it.shift.shift_date >= monthStart)
     if (items.length === 0) return
 
-    // Per maand groeperen en opschonen.
     const byMonth = new Map<string, { id: string; shift: Shift }[]>()
     for (const it of items) {
       const key = it.shift.shift_date.slice(0, 7)
@@ -152,10 +146,8 @@ export default function MijnRooster() {
         if (!shift) return false
         return shift.shift_date >= start && shift.shift_date <= end
       })
-      .sort((a, b) => {
-        if (a.status !== b.status) return a.status === 'approved' ? -1 : 1
-        return a.shifts!.shift_date.localeCompare(b.shifts!.shift_date)
-      })
+      .sort((a, b) => a.shifts!.shift_date.localeCompare(b.shifts!.shift_date)
+        || a.shifts!.shift_type.localeCompare(b.shifts!.shift_type))
       // Afwijkende werktijden (door de admin ingesteld) gaan vóór de
       // standaardtijden — ook in de agenda-sync en urentelling.
       .map(a => ({ ...a, shift: effectiveShift(a.shifts!, a) }))
@@ -165,8 +157,6 @@ export default function MijnRooster() {
     loadColleagues(enriched.map(a => a.shift_id))
   }
 
-  // Haal op wie er nog meer op mijn diensten staan, zodat je ziet met
-  // wie je werkt (en dus met wie je zou kunnen ruilen).
   async function loadColleagues(shiftIds: string[]) {
     if (shiftIds.length === 0) { setColleagues({}); return }
     const { data } = await supabase
@@ -190,7 +180,7 @@ export default function MijnRooster() {
   }
 
   async function syncShift(assignment: AssignmentWithShift) {
-    if (!googleToken) { setTokenWarning(true); return }
+    if (!googleToken) return
     setSyncing(prev => ({ ...prev, [assignment.shift_id]: true }))
 
     if (assignment.google_calendar_event_id) {
@@ -203,17 +193,22 @@ export default function MijnRooster() {
         await persistEventId(assignment.id, eventId)
         await loadAssignments()
       } else {
-        alert('Kon agenda-item niet aanmaken. Je Google token is mogelijk verlopen — log opnieuw in.')
+        // Token verlopen: opnieuw koppelen lost het op.
         setGoogleToken(null)
-        setTokenWarning(true)
       }
     }
 
     setSyncing(prev => ({ ...prev, [assignment.shift_id]: false }))
   }
 
+  async function withdrawPending(a: AssignmentWithShift) {
+    if (!confirm(`Je aanmelding voor ${formatDate(a.shift.shift_date)} intrekken?`)) return
+    await supabase.from('assignments').delete().eq('id', a.id)
+    await loadAssignments()
+  }
+
   async function leaveReserve(a: AssignmentWithShift) {
-    if (!confirm(`Wil je jezelf van de reservelijst voor ${formatDate(a.shift.shift_date)} (${a.shift.shift_type}) afmelden?`)) return
+    if (!confirm(`Wil je jezelf van de reservelijst voor ${formatDate(a.shift.shift_date)} afmelden?`)) return
     const { error } = await supabase.from('assignments').delete().eq('id', a.id)
     if (error) { alert('Afmelden mislukt: ' + error.message); return }
     await loadAssignments()
@@ -253,14 +248,14 @@ export default function MijnRooster() {
   }
 
   async function syncAll() {
-    if (!googleToken) { setTokenWarning(true); return }
-    const unsynced = assignments.filter(a => !a.google_calendar_event_id)
+    if (!googleToken) return
+    const unsynced = assignments.filter(a => a.status === 'approved' && !a.google_calendar_event_id)
     for (const a of unsynced) await syncShift(a)
   }
 
   // Ruimt dubbele agenda-afspraken op en zet elke dienst nog één keer neer.
   async function repairSync() {
-    if (!googleToken) { setTokenWarning(true); return }
+    if (!googleToken) return
     setRepairing(true)
     const [y, m] = selectedMonth.split('-').map(Number)
     const approved = assignments.filter(a => a.status === 'approved').map(a => ({ id: a.id, shift: a.shift }))
@@ -273,335 +268,188 @@ export default function MijnRooster() {
       : 'Geen duplicaten gevonden — alles staat netjes één keer in je agenda.')
   }
 
-  const approvedAssignments = assignments.filter(a => a.status === 'approved')
-  const pendingAssignments = assignments.filter(a => a.status === 'pending')
-  const totalHours = approvedAssignments.reduce((sum, a) => sum + Number(a.shift.duration_hours), 0)
-  const syncedCount = approvedAssignments.filter(a => a.google_calendar_event_id).length
-  const [year, month] = selectedMonth.split('-').map(Number)
-  const weeks = getWeeksInMonth(year, month)
-
-  // Mijn toewijzingen per dag (ochtend/middag) voor de kalender.
-  const byDate = assignments.reduce<Record<string, Partial<Record<ShiftType, AssignmentWithShift>>>>((acc, a) => {
-    const iso = a.shift.shift_date
-    if (!acc[iso]) acc[iso] = {}
-    acc[iso][a.shift.shift_type] = a
-    return acc
-  }, {})
-
-  const selectedDayAssignments = selectedDate
-    ? assignments
-        .filter(a => a.shift.shift_date === selectedDate)
-        .sort((a, b) => a.shift.shift_type.localeCompare(b.shift.shift_type))
-    : []
-
-  function generateMonthOptions() {
-    const now = new Date()
-    return Array.from({ length: 5 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() + i - 1, 1)
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      return { value, label: monthLabel(d.getFullYear(), d.getMonth() + 1) }
-    })
+  function shiftMonth(delta: number) {
+    const [y, m] = selectedMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
+  const nowMonth = (() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })()
+
+  const approvedAssignments = assignments.filter(a => a.status === 'approved')
+  const requestAssignments = assignments.filter(a => a.status === 'pending' || a.status === 'reserve')
+  const totalHours = approvedAssignments.reduce((sum, a) => sum + Number(a.shift.duration_hours), 0)
+  const unsyncedCount = approvedAssignments.filter(a => !a.google_calendar_event_id).length
+  const [year, month] = selectedMonth.split('-').map(Number)
+
+  // Verticale agenda: goedgekeurde diensten per dag.
+  const byDay = useMemo(() => {
+    const source = tab === 'rooster' ? approvedAssignments : requestAssignments
+    const map = new Map<string, AssignmentWithShift[]>()
+    for (const a of source) {
+      const d = a.shift.shift_date
+      if (!map.has(d)) map.set(d, [])
+      map.get(d)!.push(a)
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [assignments, tab])
+
+  const todayISO = new Date().toISOString().split('T')[0]
+
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-5 max-w-2xl">
+      {/* Header + maandnavigatie */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-dark">Mijn rooster</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Jouw ingeplande diensten</p>
+          <p className="text-gray-400 text-sm mt-0.5">Jouw persoonlijke werkagenda</p>
         </div>
-        <select
-          className="border border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-medium text-dark focus:outline-none focus:border-salmon-400"
-          value={selectedMonth}
-          onChange={e => setSelectedMonth(e.target.value)}
-        >
-          {generateMonthOptions().map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1">
+          <button onClick={() => shiftMonth(-1)} aria-label="Vorige maand"
+            className="w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">‹</button>
+          <p className="font-semibold text-dark text-sm px-2.5 capitalize whitespace-nowrap">{monthLabel(year, month)}</p>
+          <button onClick={() => shiftMonth(1)} aria-label="Volgende maand"
+            className="w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">›</button>
+          {selectedMonth !== nowMonth && (
+            <button onClick={() => setSelectedMonth(nowMonth)}
+              className="text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-dark hover:border-gray-300 transition-colors ml-1">
+              Vandaag
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Inkomende ruilverzoeken */}
       {incomingSwapCount > 0 && (
         <Link to="/ruilverzoeken" className="card p-4 flex items-center justify-between gap-3 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-              <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-dark">
-                {incomingSwapCount} ruilverzoek{incomingSwapCount !== 1 ? 'en' : ''}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">Een collega wil met je ruilen</p>
-            </div>
+          <div>
+            <p className="text-sm font-semibold text-dark">
+              {incomingSwapCount} ruilverzoek{incomingSwapCount !== 1 ? 'en' : ''} wacht{incomingSwapCount === 1 ? '' : 'en'} op jou
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">Een collega wil met je ruilen</p>
           </div>
-          <span className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--color-primary)' }}>Bekijken →</span>
+          <span className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--color-primary)' }}>Beoordelen →</span>
         </Link>
       )}
 
-      {/* Swap success */}
       {swapSuccess && (
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <p className="text-sm font-semibold text-dark">Ruilverzoek verstuurd</p>
-        </div>
-      )}
-
-      {/* Auto-sync bezig */}
-      {autoSyncing && (
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-            <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-dark">Synchroniseren met Google Agenda</p>
-            <p className="text-xs text-gray-400 mt-0.5">Diensten worden automatisch toegevoegd...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Auto-sync gelukt */}
-      {autoSyncSuccess && (
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <p className="text-sm font-semibold text-dark">Diensten toegevoegd aan je Google Agenda</p>
-        </div>
-      )}
-
-      {/* Google Calendar warning */}
-      {tokenWarning && (
-        <div className="card p-4 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-dark">Google Agenda niet verbonden</p>
-            <p className="text-xs text-gray-400 mt-0.5">Log uit en opnieuw in om diensten te synchroniseren.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
         <div className="card p-4">
-          <p className="text-2xl font-bold" style={{ color: 'var(--color-primary)' }}>{approvedAssignments.length}</p>
-          <p className="text-xs text-gray-400 mt-1">Ingeroosterd</p>
+          <p className="text-sm font-semibold text-emerald-600">✓ Ruilverzoek verstuurd — je collega krijgt een melding.</p>
         </div>
-        <div className="card p-4">
-          <p className="text-2xl font-bold text-dark">{totalHours}u</p>
-          <p className="text-xs text-gray-400 mt-1">Totaal uren</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-2xl font-bold text-amber-600">{pendingAssignments.length}</p>
-          <p className="text-xs text-gray-400 mt-1">Wacht op goedkeuring</p>
-        </div>
+      )}
+
+      {/* Agenda-koppeling als echte productfunctie */}
+      <div className="card px-5 py-4">
+        {!googleToken ? (
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-dark">Agenda synchroniseren</p>
+              <p className="text-[13px] text-gray-400 mt-0.5">
+                Voeg je rooster automatisch toe aan je persoonlijke Google Agenda.
+              </p>
+            </div>
+            <button onClick={() => signInWithGoogle(settings.allowed_domain)}
+              className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-opacity hover:opacity-90 flex-shrink-0"
+              style={{ backgroundColor: 'var(--color-primary)' }}>
+              Google Agenda koppelen
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-dark">✓ Google Agenda verbonden</p>
+              <p className="text-[13px] text-gray-400 mt-0.5">
+                {autoSyncing ? 'Diensten worden gesynchroniseerd…'
+                  : autoSyncSuccess ? 'Diensten toegevoegd aan je agenda.'
+                  : unsyncedCount > 0 ? `${unsyncedCount} dienst${unsyncedCount !== 1 ? 'en' : ''} nog niet in je agenda`
+                  : approvedAssignments.length > 0 ? 'Alle diensten staan in je agenda.'
+                  : 'Nieuwe diensten verschijnen automatisch in je agenda.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {unsyncedCount > 0 && (
+                <button onClick={syncAll} disabled={autoSyncing || repairing}
+                  className="text-xs font-semibold text-white px-3.5 py-2 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--color-dark)' }}>
+                  Synchroniseren
+                </button>
+              )}
+              {approvedAssignments.length > 0 && (
+                <button onClick={repairSync} disabled={repairing || autoSyncing}
+                  title="Verwijder dubbele afspraken en zet elke dienst één keer in je agenda"
+                  className="text-xs font-medium px-3.5 py-2 rounded-xl border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50">
+                  {repairing ? 'Opruimen…' : 'Dubbele opruimen'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Sync bar */}
-      {approvedAssignments.length > 0 && (
-        <div className="card p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-dark">Google Agenda synchroniseren</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {syncedCount === approvedAssignments.length
-                ? '✓ Alle diensten staan in je agenda'
-                : `${approvedAssignments.length - syncedCount} dienst${approvedAssignments.length - syncedCount !== 1 ? 'en' : ''} nog niet gesynchroniseerd`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={repairSync}
-              disabled={!googleToken || repairing || autoSyncing}
-              title="Verwijder dubbele afspraken en zet elke dienst één keer in je agenda"
-              className="flex-1 sm:flex-none text-sm font-medium px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50"
-            >
-              {repairing ? 'Opruimen...' : 'Dubbele opruimen'}
-            </button>
-            <button
-              onClick={syncAll}
-              disabled={!googleToken || syncedCount === approvedAssignments.length || autoSyncing || repairing}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: 'var(--color-dark)' }}
-            >
-              <CalendarSyncIcon className="w-4 h-4" />
-              Alles synchroniseren
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="flex items-center gap-2">
+        <TabChip active={tab === 'rooster'} onClick={() => setTab('rooster')}
+          label={`Rooster${approvedAssignments.length > 0 ? ` (${approvedAssignments.length})` : ''}`} />
+        <TabChip active={tab === 'aanvragen'} onClick={() => setTab('aanvragen')}
+          label={`Aanvragen${requestAssignments.length > 0 ? ` (${requestAssignments.length})` : ''}`} />
+        {tab === 'rooster' && totalHours > 0 && (
+          <p className="text-[13px] text-gray-400 ml-auto">{String(totalHours).replace('.', ',')} roosteruren deze maand</p>
+        )}
+      </div>
 
-      {/* Maandkalender */}
+      {/* Verticale agenda */}
       {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-        </div>
-      ) : assignments.length === 0 ? (
-        <div className="card p-16 text-center">
-          <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <p className="text-gray-500 font-semibold">Geen diensten in {monthLabel(year, month)}</p>
-          <p className="text-gray-400 text-sm mt-1">Je bent nog niet ingeroosterd voor deze maand.</p>
+        <Spinner />
+      ) : byDay.length === 0 ? (
+        <div className="card p-12 text-center">
+          <p className="text-gray-500 font-semibold text-sm">
+            {tab === 'rooster'
+              ? `Geen ingeroosterde diensten in ${monthLabel(year, month)}`
+              : 'Geen lopende aanvragen in deze maand'}
+          </p>
+          <p className="text-gray-400 text-sm mt-1.5">
+            {tab === 'rooster' ? 'Meld je aan voor diensten via Inschrijven.' : 'Aanmeldingen en reservelijst-plekken verschijnen hier.'}
+          </p>
+          <Link to="/beschikbaarheid" className="inline-block text-sm font-semibold mt-3" style={{ color: 'var(--color-primary)' }}>
+            Bekijk beschikbare diensten →
+          </Link>
         </div>
       ) : (
-        <>
-          {/* Legend */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400">
-            <span className="hidden sm:inline">Klik op een dag voor details</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#fb923c' }} /> Ochtend</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#818cf8' }} /> Middag</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-amber-300 inline-block" /> Aangevraagd</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-sky-300 inline-block" /> Reserve</span>
-          </div>
-
-          {/* Calendar grid */}
-          <div className="card overflow-hidden">
-            <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: 'var(--color-dark)' }}>
-              {['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'].map((d, i) => (
-                <div key={d} className={`py-3 text-center ${i < 5 ? 'border-r border-white/10' : ''}`}>
-                  <span className="hidden sm:inline text-xs font-semibold text-white/50 uppercase tracking-widest">{d}</span>
-                  <span className="sm:hidden text-xs font-semibold text-white/50 uppercase tracking-widest">{d.slice(0, 2)}</span>
+        <div className="space-y-5">
+          {byDay.map(([iso, dayAssignments]) => {
+            const day = new Date(iso + 'T00:00:00')
+            const isToday = iso === todayISO
+            const isPast = iso < todayISO
+            return (
+              <div key={iso} className={isPast ? 'opacity-60' : ''}>
+                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${isToday ? '' : 'text-gray-400'}`}
+                  style={isToday ? { color: 'var(--color-primary)' } : {}}>
+                  {day.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  {isToday && ' · vandaag'}
+                </p>
+                <div className="space-y-2">
+                  {dayAssignments.map(a => (
+                    <AssignmentCard key={a.id} a={a}
+                      typeLabel={shiftTypeConfig(settings, a.shift.shift_type).label}
+                      mates={colleagues[a.shift_id] || []}
+                      googleConnected={!!googleToken}
+                      syncing={!!syncing[a.shift_id]}
+                      onSwap={() => openSwapModal(a)}
+                      onSync={() => syncShift(a)}
+                      onWithdraw={() => withdrawPending(a)}
+                      onLeaveReserve={() => leaveReserve(a)}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="divide-y divide-gray-100">
-              {weeks.map((week, wi) => (
-                <div key={wi} className="grid grid-cols-6 divide-x divide-gray-100">
-                  {week.map((day, di) => {
-                    if (!day) return <div key={di} className="bg-gray-50/40 min-h-[72px] sm:min-h-[92px]" />
-                    const iso = dateToISO(day)
-                    const dayMap = byDate[iso] || {}
-                    const morning = dayMap['ochtend']
-                    const afternoon = dayMap['middag']
-                    const isSelected = selectedDate === iso
-                    const isToday = iso === new Date().toISOString().split('T')[0]
-                    const hasShifts = !!(morning || afternoon)
-                    return (
-                      <button
-                        key={iso}
-                        onClick={() => hasShifts && setSelectedDate(isSelected ? null : iso)}
-                        className={`p-1.5 sm:p-2.5 text-left transition-colors min-h-[72px] sm:min-h-[92px] w-full ${
-                          isSelected ? 'bg-dark/[0.06] ring-2 ring-inset ring-dark/20' : hasShifts ? 'hover:bg-gray-50' : 'cursor-default'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-                          <div
-                            className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center text-xs font-bold ${isToday ? 'text-white' : 'text-dark'}`}
-                            style={isToday ? { backgroundColor: 'var(--color-primary)' } : {}}
-                          >
-                            {day.getDate()}
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <MyShiftBar assignment={morning} label="AM" />
-                          <MyShiftBar assignment={afternoon} label="PM" />
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Geselecteerde dag */}
-          {selectedDate && selectedDayAssignments.length > 0 && (
-            <div className="card overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: 'var(--color-dark)' }}>
-                <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
-                <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
               </div>
-              <div className="divide-y divide-gray-100">
-                {selectedDayAssignments.map(a => {
-                  const isOchtend = a.shift.shift_type === 'ochtend'
-                  const mates = colleagues[a.shift_id] || []
-                  return (
-                    <div key={a.shift.id} className="px-5 py-4">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${isOchtend ? 'bg-orange-50 text-orange-500' : 'bg-indigo-50 text-indigo-500'}`}>
-                          {isOchtend ? 'Ochtend' : 'Middag'}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)} ({a.shift.duration_hours}u)
-                        </span>
-                        <StatusBadge status={a.status} />
-                      </div>
-
-                      {a.status === 'approved' && mates.length > 0 && (
-                        <p className="text-xs text-indigo-400 font-medium mt-2">Samen met {mates.join(' en ')}</p>
-                      )}
-
-                      {a.status === 'approved' && (
-                        <div className="flex items-center gap-2 mt-3">
-                          <button
-                            onClick={() => openSwapModal(a)}
-                            title="Ruilverzoek aanvragen bij een collega"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-indigo-500 bg-indigo-50 hover:bg-indigo-100 transition-colors text-xs font-semibold"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
-                            </svg>
-                            Ruilen
-                          </button>
-                          <button
-                            onClick={() => syncShift(a)}
-                            disabled={syncing[a.shift_id] || !googleToken}
-                            title={a.google_calendar_event_id ? 'Verwijder uit Google Agenda' : 'Voeg toe aan Google Agenda'}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-40 ${
-                              a.google_calendar_event_id
-                                ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100'
-                                : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
-                            }`}
-                          >
-                            {syncing[a.shift_id] ? (
-                              <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <CalendarSyncIcon className="w-3.5 h-3.5" />
-                            )}
-                            {a.google_calendar_event_id ? 'In agenda' : 'In agenda zetten'}
-                          </button>
-                        </div>
-                      )}
-
-                      {a.status === 'pending' && (
-                        <p className="text-xs text-gray-400 mt-2">Wacht nog op goedkeuring door de beheerder.</p>
-                      )}
-                      {a.status === 'reserve' && (
-                        <div className="mt-2">
-                          <p className="text-xs text-gray-400">Je staat op de reservelijst. Komt er een plek vrij, dan benaderen we je.</p>
-                          {canLeaveReserve(a.shift) ? (
-                            <button
-                              onClick={() => leaveReserve(a)}
-                              className="mt-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sky-600 bg-sky-50 hover:bg-sky-100 transition-colors text-xs font-semibold"
-                            >
-                              Afmelden van reservelijst
-                            </button>
-                          ) : (
-                            <p className="text-[11px] text-gray-300 mt-1">Afmelden kan tot 24 uur voor de start van de dienst.</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </>
+            )
+          })}
+        </div>
       )}
+
       {/* Swap modal */}
       {swapModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
@@ -646,13 +494,11 @@ export default function MijnRooster() {
                 </div>
               )}
             </div>
-            {/* Hoe werkt ruilen */}
             <div className="px-5 py-3.5 border-t border-gray-100 bg-gray-50/60 flex-shrink-0 rounded-b-2xl">
               <p className="text-[11px] text-gray-400 leading-relaxed">
                 <span className="font-semibold text-gray-500">Zo werkt ruilen:</span>{' '}
                 1. jij kiest hierboven een dienst van een collega · 2. je collega keurt het verzoek goed
-                · 3. de admin bevestigt de ruil. Daarna worden jullie roosters omgewisseld.
-                Controleer na een ruil even je Google Agenda.
+                · 3. de planning bevestigt de ruil. Daarna worden jullie roosters omgewisseld.
               </p>
             </div>
           </div>
@@ -662,52 +508,109 @@ export default function MijnRooster() {
   )
 }
 
-// Eén dienstbalk in een kalenderdag: leeg/gedempt als de student die
-// dagdienst niet heeft, anders gekleurd op status (en type bij ingeroosterd).
-function MyShiftBar({ assignment, label }: { assignment?: AssignmentWithShift; label: string }) {
-  if (!assignment) {
-    return (
-      <div className="h-5 rounded-md bg-gray-100/60 flex items-center px-1.5">
-        <span className="text-[9px] text-gray-300 font-semibold">{label}</span>
-      </div>
-    )
-  }
+// ------------------------------------------------------------
+// Eén dienst in de agenda: status in tekst + duidelijke acties.
+// ------------------------------------------------------------
 
-  const s = assignment.status
-  const isOchtend = assignment.shift.shift_type === 'ochtend'
-  const { bg, text } =
-    s === 'pending' ? { bg: '#fef3c7', text: '#b45309' }
-    : s === 'reserve' ? { bg: '#e0f2fe', text: '#0369a1' }
-    : isOchtend ? { bg: '#ffedd5', text: '#c2410c' }
-    : { bg: '#e0e7ff', text: '#4338ca' }
-  const synced = s === 'approved' && !!assignment.google_calendar_event_id
+function AssignmentCard({ a, typeLabel, mates, googleConnected, syncing, onSwap, onSync, onWithdraw, onLeaveReserve }: {
+  a: AssignmentWithShift
+  typeLabel: string
+  mates: string[]
+  googleConnected: boolean
+  syncing: boolean
+  onSwap: () => void
+  onSync: () => void
+  onWithdraw: () => void
+  onLeaveReserve: () => void
+}) {
+  const isApproved = a.status === 'approved'
+  const isPending = a.status === 'pending'
+  const isReserve = a.status === 'reserve'
+  const isFuture = new Date(`${a.shift.shift_date}T${a.shift.start_time}`) > new Date()
 
   return (
-    <div className="h-5 rounded-md flex items-center justify-between px-1.5 gap-0.5" style={{ backgroundColor: bg }}>
-      <span className="text-[9px] font-bold leading-none truncate" style={{ color: text }}>
-        {label}<span className="hidden sm:inline"> {assignment.shift.start_time.slice(0, 5)}</span>
-      </span>
-      <span className="text-[9px] font-bold leading-none flex-shrink-0" style={{ color: text }}>
-        {s === 'pending' ? '⏳' : s === 'reserve' ? 'R' : synced ? '✓' : ''}
-      </span>
+    <div className={`bg-white rounded-xl border p-4 ${
+      isApproved ? 'border-gray-100' : isPending ? 'border-amber-100' : 'border-sky-100'
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-dark">{typeLabel}dienst</p>
+            {isApproved && <span className="text-[11px] font-bold text-emerald-600">✓ Ingeroosterd</span>}
+            {isPending && <span className="text-[11px] font-bold text-amber-600">Wacht op goedkeuring</span>}
+            {isReserve && <span className="text-[11px] font-bold text-sky-600">Reservelijst</span>}
+          </div>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {a.shift.start_time.slice(0, 5)} – {a.shift.end_time.slice(0, 5)}
+            <span className="text-gray-300"> · </span>
+            {String(a.shift.duration_hours).replace('.', ',')}u
+          </p>
+          {isApproved && mates.length > 0 && (
+            <p className="text-xs text-gray-400 mt-1">Met {mates.join(' en ')}</p>
+          )}
+          {isReserve && (
+            <p className="text-xs text-gray-400 mt-1">Komt er een plek vrij, dan krijg je een melding en e-mail.</p>
+          )}
+        </div>
+
+        {isApproved && googleConnected && (
+          <button onClick={onSync} disabled={syncing}
+            title={a.google_calendar_event_id ? 'Verwijder uit Google Agenda' : 'Voeg toe aan Google Agenda'}
+            className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg flex-shrink-0 transition-colors disabled:opacity-40 ${
+              a.google_calendar_event_id ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-400 bg-gray-50 hover:bg-gray-100'
+            }`}>
+            {syncing ? '…' : a.google_calendar_event_id ? 'In agenda ✓' : '+ Agenda'}
+          </button>
+        )}
+      </div>
+
+      {/* Acties */}
+      {isFuture && (
+        <div className="flex items-center gap-2 mt-3">
+          {isApproved && (
+            <button onClick={onSwap}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">
+              Ruilverzoek
+            </button>
+          )}
+          {isPending && (
+            <button onClick={onWithdraw}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">
+              Aanmelding intrekken
+            </button>
+          )}
+          {isReserve && canLeaveReserve(a.shift) && (
+            <button onClick={onLeaveReserve}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors">
+              Afmelden van reservelijst
+            </button>
+          )}
+          {isReserve && !canLeaveReserve(a.shift) && (
+            <p className="text-[11px] text-gray-300">Afmelden kan tot 24 uur voor de start van de dienst.</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { cls: string; label: string }> = {
-    approved: { cls: 'bg-emerald-50 text-emerald-600', label: 'Ingeroosterd' },
-    pending:  { cls: 'bg-amber-100 text-amber-700',     label: 'Aangevraagd' },
-    reserve:  { cls: 'bg-sky-100 text-sky-700',         label: 'Reserve' },
-  }
-  const { cls, label } = map[status] ?? map.approved
-  return <span className={`ml-auto text-xs font-semibold px-2.5 py-1 rounded-full ${cls}`}>{label}</span>
+function TabChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick}
+      className={`text-sm font-medium px-3.5 py-2 rounded-xl border transition-colors ${
+        active ? 'text-white border-transparent' : 'bg-white border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300'
+      }`}
+      style={active ? { backgroundColor: 'var(--color-dark)' } : {}}>
+      {label}
+    </button>
+  )
 }
 
-function CalendarSyncIcon({ className }: { className?: string }) {
+function Spinner() {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-    </svg>
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
+    </div>
   )
 }
