@@ -12,7 +12,7 @@ interface UpcomingShift {
 }
 
 export default function Dashboard() {
-  const { profile, isAdmin, loading: authLoading } = useAuth()
+  const { profile, loading: authLoading } = useAuth()
   const [activePeriod, setActivePeriod] = useState<RosterPeriod | null>(null)
   const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([])
   const [reserveCount, setReserveCount] = useState(0)
@@ -120,13 +120,6 @@ export default function Dashboard() {
             {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        {isAdmin && (
-          <Link to="/admin"
-            className="text-sm font-semibold text-white px-4 py-2 rounded-xl"
-            style={{ backgroundColor: 'var(--color-dark)' }}>
-            Beheerpaneel →
-          </Link>
-        )}
       </div>
 
       {/* Stat cards */}

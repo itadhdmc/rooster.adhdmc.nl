@@ -49,9 +49,11 @@ export default function Inbox() {
     await supabase.from('notifications').delete().eq('id', id)
   }
 
-  async function clearAll() {
-    setNotifications([])
-    await supabase.from('notifications').delete().eq('user_id', profile!.id)
+  // Verwijdert alleen gelezen meldingen — nooit "alles wissen", zodat het
+  // niet voelt alsof je administratieve informatie kwijtraakt.
+  async function clearRead() {
+    setNotifications(prev => prev.filter(n => !n.read))
+    await supabase.from('notifications').delete().eq('user_id', profile!.id).eq('read', true)
   }
 
   if (loading) return <Spinner />
@@ -60,12 +62,12 @@ export default function Inbox() {
     <div className="space-y-5 max-w-2xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-dark">Inbox</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Jouw meldingen en notificaties.</p>
+          <h1 className="text-2xl font-bold text-dark">Meldingen</h1>
+          <p className="text-gray-400 text-sm mt-0.5">Alles wat er voor jou is gebeurd in het rooster.</p>
         </div>
-        {notifications.length > 0 && (
-          <button onClick={clearAll} className="text-xs text-gray-400 hover:text-dark transition-colors font-medium mt-1">
-            Alles wissen
+        {notifications.some(n => n.read) && (
+          <button onClick={clearRead} className="text-xs text-gray-400 hover:text-dark transition-colors font-medium mt-1">
+            Gelezen meldingen verwijderen
           </button>
         )}
       </div>

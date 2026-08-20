@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useSettings } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
@@ -9,17 +9,48 @@ interface LayoutProps {
   children: ReactNode
 }
 
-const NAV_ITEMS = [
+// ------------------------------------------------------------
+// Twee contexten: de medewerkeromgeving (bovennavigatie, compact,
+// mobielvriendelijk) en de beheeromgeving (zijbalk, desktop-first).
+// ------------------------------------------------------------
+
+const EMPLOYEE_NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: HomeIcon },
   { to: '/beschikbaarheid', label: 'Inschrijven', icon: CalendarIcon },
   { to: '/mijn-rooster', label: 'Mijn rooster', icon: ClockIcon },
 ]
 
+const ADMIN_NAV: { group: string | null; items: { to: string; label: string; end?: boolean }[] }[] = [
+  { group: null, items: [{ to: '/admin', label: 'Overzicht', end: true }] },
+  {
+    group: 'Planning',
+    items: [
+      { to: '/admin/rooster', label: 'Rooster' },
+      { to: '/admin/beschikbaarheid', label: 'Beschikbaarheid' },
+    ],
+  },
+  {
+    group: 'Organisatie',
+    items: [
+      { to: '/admin/studenten', label: 'Medewerkers' },
+      { to: '/admin/inzichten', label: 'Inzichten' },
+      { to: '/admin/financien', label: 'Financieel' },
+    ],
+  },
+  {
+    group: 'Systeem',
+    items: [
+      { to: '/admin/logboek', label: 'Logboek' },
+      { to: '/admin/instellingen', label: 'Instellingen' },
+    ],
+  },
+]
+
 export default function Layout({ children }: LayoutProps) {
   const { profile, isAdmin } = useAuth()
-  const { settings } = useSettings()
-  const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+  const isAdminArea = isAdmin && location.pathname.startsWith('/admin')
+
   const [unreadCount, setUnreadCount] = useState(0)
   const [swapCount, setSwapCount] = useState(0)
 
@@ -50,6 +81,23 @@ export default function Layout({ children }: LayoutProps) {
     return () => { supabase.removeChannel(channel) }
   }, [profile?.id])
 
+  return isAdminArea
+    ? <AdminShell unreadCount={unreadCount}>{children}</AdminShell>
+    : <EmployeeShell unreadCount={unreadCount} swapCount={swapCount} onOpenInbox={() => setUnreadCount(0)}>{children}</EmployeeShell>
+}
+
+// ------------------------------------------------------------
+// Medewerkeromgeving
+// ------------------------------------------------------------
+
+function EmployeeShell({ children, unreadCount, swapCount, onOpenInbox }: {
+  children: ReactNode; unreadCount: number; swapCount: number; onOpenInbox: () => void
+}) {
+  const { profile, isAdmin } = useAuth()
+  const { settings } = useSettings()
+  const navigate = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
+
   async function handleSignOut() {
     await signOut()
     navigate('/login')
@@ -71,11 +119,9 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Top navigation */}
       <nav style={{ backgroundColor: 'var(--color-dark)' }} className="shadow-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo + nav links */}
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3 flex-shrink-0">
                 <img src="/logo.png" alt={settings.org_name} className="h-12 w-auto" />
@@ -86,19 +132,14 @@ export default function Layout({ children }: LayoutProps) {
               </div>
 
               <div className="hidden md:flex items-center gap-1">
-                {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+                {EMPLOYEE_NAV.map(({ to, label, icon: Icon }) => (
                   <NavLink key={to} to={to} className={navClass}>
                     <Icon className="w-4 h-4" />
                     {label}
                   </NavLink>
                 ))}
                 <NavLink to="/ruilverzoeken" className={navClass}>
-                  <div className="relative">
-                    <SwapIcon className="w-4 h-4" />
-                    {swapCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
-                    )}
-                  </div>
+                  <SwapIcon className="w-4 h-4" />
                   Ruilen
                   {swapCount > 0 && (
                     <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full leading-none">
@@ -106,20 +147,9 @@ export default function Layout({ children }: LayoutProps) {
                     </span>
                   )}
                 </NavLink>
-                {isAdmin && (
-                  <NavLink to="/admin" className={navClass}>
-                    <CogIcon className="w-4 h-4" />
-                    Beheer
-                  </NavLink>
-                )}
-                <NavLink to="/inbox" className={navClass} onClick={() => setUnreadCount(0)}>
-                  <div className="relative">
-                    <BellIcon className="w-4 h-4" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
-                    )}
-                  </div>
-                  Inbox
+                <NavLink to="/inbox" className={navClass} onClick={onOpenInbox}>
+                  <BellIcon className="w-4 h-4" />
+                  Meldingen
                   {unreadCount > 0 && (
                     <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.5 rounded-full leading-none">
                       {unreadCount}
@@ -129,20 +159,21 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
 
-            {/* Right side */}
             <div className="flex items-center gap-3">
               {isAdmin && (
-                <span className="hidden sm:inline bg-salmon-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                  Admin
-                </span>
+                <Link
+                  to="/admin"
+                  className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-white/80 hover:text-white border border-white/20 hover:border-white/40 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <SwitchIcon className="w-3.5 h-3.5" />
+                  Naar beheer
+                </Link>
               )}
 
               <div className="hidden sm:flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-white text-sm font-medium leading-tight">
-                    {profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0]}
-                  </p>
-                </div>
+                <p className="text-white text-sm font-medium leading-tight">
+                  {profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0]}
+                </p>
                 <button
                   onClick={handleSignOut}
                   className="text-white/60 hover:text-white transition-colors text-sm px-3 py-1.5 rounded-lg hover:bg-white/10"
@@ -151,55 +182,40 @@ export default function Layout({ children }: LayoutProps) {
                 </button>
               </div>
 
-              {/* Mobile menu button */}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 className="md:hidden text-white p-2 rounded-lg hover:bg-white/10"
               >
-                {menuOpen ? (
-                  <XIcon className="w-5 h-5" />
-                ) : (
-                  <MenuIcon className="w-5 h-5" />
-                )}
+                {menuOpen ? <XIcon className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Mobile menu */}
+        {/* Mobiel menu */}
         {menuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 shadow-lg">
             <div className="divide-y divide-gray-100">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {EMPLOYEE_NAV.map(({ to, label, icon: Icon }) => (
                 <NavLink key={to} to={to} className={mobileNavClass} onClick={() => setMenuOpen(false)}>
                   <Icon className="w-5 h-5" />
                   {label}
                 </NavLink>
               ))}
               <NavLink to="/ruilverzoeken" className={mobileNavClass} onClick={() => setMenuOpen(false)}>
-                <div className="relative">
-                  <SwapIcon className="w-5 h-5" />
-                  {swapCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
-                  )}
-                </div>
+                <SwapIcon className="w-5 h-5" />
                 Ruilen{swapCount > 0 ? ` (${swapCount})` : ''}
+              </NavLink>
+              <NavLink to="/inbox" className={mobileNavClass} onClick={() => { setMenuOpen(false); onOpenInbox() }}>
+                <BellIcon className="w-5 h-5" />
+                Meldingen{unreadCount > 0 ? ` (${unreadCount})` : ''}
               </NavLink>
               {isAdmin && (
                 <NavLink to="/admin" className={mobileNavClass} onClick={() => setMenuOpen(false)}>
-                  <CogIcon className="w-5 h-5" />
-                  Beheer
+                  <SwitchIcon className="w-5 h-5" />
+                  Naar beheer
                 </NavLink>
               )}
-              <NavLink to="/inbox" className={mobileNavClass} onClick={() => { setMenuOpen(false); setUnreadCount(0) }}>
-                <div className="relative">
-                  <BellIcon className="w-5 h-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
-                  )}
-                </div>
-                Inbox{unreadCount > 0 ? ` (${unreadCount})` : ''}
-              </NavLink>
               <div className="px-4 py-3 flex items-center justify-between">
                 <span className="text-sm text-gray-500">{profile?.email}</span>
                 <button onClick={handleSignOut} className="text-sm text-salmon-500 font-medium">
@@ -215,18 +231,157 @@ export default function Layout({ children }: LayoutProps) {
         {children}
       </main>
 
-      <footer className="border-t border-gray-100 mt-4">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p className="text-xs text-gray-400">{settings.org_name} · Roostersysteem</p>
-          <p className="text-xs text-gray-400">
-            Vragen of problemen?{' '}
-            <a href={`mailto:${settings.support_email}`} className="font-semibold text-dark hover:text-salmon-500 transition-colors">
-              {settings.support_email}
-            </a>
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
+  )
+}
+
+// ------------------------------------------------------------
+// Beheeromgeving (zijbalk, desktop-first)
+// ------------------------------------------------------------
+
+function AdminShell({ children, unreadCount }: { children: ReactNode; unreadCount: number }) {
+  const { profile } = useAuth()
+  const { settings } = useSettings()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [latestPeriodId, setLatestPeriodId] = useState<string | null>(null)
+
+  // Voor de "Rooster"-link: de meest recente periode.
+  useEffect(() => {
+    supabase.from('roster_periods').select('id').order('year').order('month')
+      .then(({ data }) => setLatestPeriodId(data?.length ? data[data.length - 1].id : null))
+  }, [])
+
+  async function handleSignOut() {
+    await signOut()
+    navigate('/login')
+  }
+
+  function resolveTo(to: string): string {
+    if (to === '/admin/rooster') return latestPeriodId ? `/admin/rooster/${latestPeriodId}` : '/admin/periodes/nieuw'
+    return to
+  }
+
+  function isActive(to: string, end?: boolean): boolean {
+    if (end) return location.pathname === to
+    return location.pathname.startsWith(to)
+  }
+
+  const sidebar = (
+    <div className="flex flex-col h-full">
+      <Link to="/admin" className="flex items-center gap-3 px-5 h-16 flex-shrink-0" onClick={() => setMenuOpen(false)}>
+        <img src="/logo.png" alt={settings.org_name} className="h-10 w-auto" />
+        <div>
+          <p className="text-white font-bold text-sm leading-tight">{settings.org_name}</p>
+          <p className="text-white/50 text-xs leading-tight">Beheer</p>
+        </div>
+      </Link>
+
+      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+        {ADMIN_NAV.map(g => (
+          <div key={g.group ?? 'root'}>
+            {g.group && (
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 px-2.5 mb-1">{g.group}</p>
+            )}
+            {g.items.map(item => (
+              <Link
+                key={item.to}
+                to={resolveTo(item.to)}
+                onClick={() => setMenuOpen(false)}
+                className={`block px-2.5 py-2 rounded-lg text-sm transition-colors ${
+                  isActive(item.to, item.end)
+                    ? 'bg-white/15 text-white font-semibold'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        ))}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 px-2.5 mb-1">Persoonlijk</p>
+          <Link to="/inbox" onClick={() => setMenuOpen(false)}
+            className="flex items-center justify-between px-2.5 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5 transition-colors">
+            Meldingen
+            {unreadCount > 0 && (
+              <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 py-0.5 rounded-full leading-none">{unreadCount}</span>
+            )}
+          </Link>
+        </div>
+      </nav>
+
+      {/* Gebruiker + weergave-wisselaar */}
+      <div className="px-3 py-4 border-t border-white/10 flex-shrink-0">
+        <div className="px-2.5 mb-2.5">
+          <p className="text-white text-sm font-semibold leading-tight">{profile?.full_name || profile?.email}</p>
+          <p className="text-white/40 text-xs mt-0.5">Administrator</p>
+        </div>
+        <Link to="/dashboard" onClick={() => setMenuOpen(false)}
+          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5 transition-colors">
+          <SwitchIcon className="w-4 h-4" />
+          Medewerkerweergave
+        </Link>
+        <button onClick={handleSignOut}
+          className="w-full text-left px-2.5 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5 transition-colors">
+          Uitloggen
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-surface">
+      {/* Desktop-zijbalk */}
+      <aside className="hidden lg:block fixed inset-y-0 left-0 w-60 z-30" style={{ backgroundColor: 'var(--color-dark)' }}>
+        {sidebar}
+      </aside>
+
+      {/* Mobiele topbalk */}
+      <div className="lg:hidden sticky top-0 z-30 h-14 flex items-center justify-between px-4" style={{ backgroundColor: 'var(--color-dark)' }}>
+        <div className="flex items-center gap-2.5">
+          <img src="/logo.png" alt={settings.org_name} className="h-8 w-auto" />
+          <p className="text-white font-bold text-sm">Beheer</p>
+        </div>
+        <button onClick={() => setMenuOpen(!menuOpen)} className="text-white p-2 rounded-lg hover:bg-white/10">
+          {menuOpen ? <XIcon className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}
+        </button>
+      </div>
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
+          <div className="absolute inset-y-0 left-0 w-64" style={{ backgroundColor: 'var(--color-dark)' }}>
+            {sidebar}
+          </div>
+        </div>
+      )}
+
+      <div className="lg:pl-60">
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-8">
+          {children}
+        </main>
+        <Footer />
+      </div>
+    </div>
+  )
+}
+
+function Footer() {
+  const { settings } = useSettings()
+  return (
+    <footer className="border-t border-gray-100 mt-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <p className="text-xs text-gray-400">{settings.org_name} · Roostersysteem</p>
+        <p className="text-xs text-gray-400">
+          Vragen of problemen?{' '}
+          <a href={`mailto:${settings.support_email}`} className="font-semibold text-dark hover:text-salmon-500 transition-colors">
+            {settings.support_email}
+          </a>
+        </p>
+      </div>
+    </footer>
   )
 }
 
@@ -262,11 +417,10 @@ function SwapIcon({ className }: { className?: string }) {
   )
 }
 
-function CogIcon({ className }: { className?: string }) {
+function SwitchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5" />
     </svg>
   )
 }
