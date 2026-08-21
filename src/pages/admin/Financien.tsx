@@ -5,6 +5,7 @@ import { RosterPeriod, Profile } from '../../types'
 import { monthLabel, isoWeek } from '../../utils/dates'
 import { rowHours, dayPaidHours } from '../../utils/paidHours'
 import { useSettings, pauseConfig, isPremiumDate } from '../../hooks/useSettings'
+import ExportDialog from '../../components/ExportDialog'
 
 // Assignment-rij zoals de query die teruggeeft (met geneste dienst).
 interface FinRow {
@@ -51,6 +52,7 @@ export default function Financien() {
   const [weeks, setWeeks] = useState<WeekFin[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingPeriod, setLoadingPeriod] = useState(false)
+  const [showExport, setShowExport] = useState(false)
 
   useEffect(() => { loadPeriods() }, [])
   useEffect(() => { if (selectedPeriod) loadPeriodData() }, [selectedPeriod?.id])
@@ -164,14 +166,27 @@ export default function Financien() {
             Verloonde uren — dezelfde berekening als de urenexport (pauze en overlap verrekend).
           </p>
         </div>
-        <select
-          className="border border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-medium text-dark focus:outline-none"
-          value={selectedPeriod.id}
-          onChange={e => setSelectedPeriod(periods.find(p => p.id === e.target.value) || null)}
-        >
-          {periods.map(p => <option key={p.id} value={p.id}>{monthLabel(p.year, p.month)}</option>)}
-        </select>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <select
+            className="border border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-medium text-dark focus:outline-none"
+            value={selectedPeriod.id}
+            onChange={e => setSelectedPeriod(periods.find(p => p.id === e.target.value) || null)}
+          >
+            {periods.map(p => <option key={p.id} value={p.id}>{monthLabel(p.year, p.month)}</option>)}
+          </select>
+          <button
+            onClick={() => setShowExport(true)}
+            className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-opacity hover:opacity-90"
+            style={{ backgroundColor: 'var(--color-primary)' }}
+          >
+            Uren exporteren
+          </button>
+        </div>
       </div>
+
+      {showExport && selectedPeriod && (
+        <ExportDialog period={selectedPeriod} onClose={() => setShowExport(false)} />
+      )}
 
       {loadingPeriod ? <Spinner /> : (
         <>
