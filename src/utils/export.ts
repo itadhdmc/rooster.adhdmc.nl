@@ -276,7 +276,7 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
 
   let paidTotal = 0
   for (const key of groupKeys) {
-    const dayRows = groups.get(key)!.sort((a, b) => a.shifts.shift_type.localeCompare(b.shifts.shift_type))
+    const dayRows = groups.get(key)!.sort((a, b) => a.shifts.start_time.localeCompare(b.shifts.start_time))
     const [date] = key.split('|')
     const prof = res.profiles.get(dayRows[0].user_id)
     const weekday = new Date(date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'long' })

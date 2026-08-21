@@ -48,7 +48,7 @@ export default function RoosterBeheer() {
     if (!periodId) return
     const [{ data: p }, { data: s }, { data: st }, { data: att }] = await Promise.all([
       supabase.from('roster_periods').select('*').eq('id', periodId).single(),
-      supabase.from('shifts_with_assignments').select('*').eq('period_id', periodId).order('shift_date').order('shift_type'),
+      supabase.from('shifts_with_assignments').select('*').eq('period_id', periodId).order('shift_date').order('start_time'),
       supabase.from('profiles').select('*').eq('role', 'student').eq('active', true),
       supabase.from('assignments').select('*, shifts!inner(period_id)').eq('shifts.period_id', periodId),
     ])
@@ -327,7 +327,7 @@ export default function RoosterBeheer() {
   )
 
   const selectedDayShifts = selectedDate
-    ? shifts.filter(s => s.shift_date === selectedDate).sort((a, b) => a.shift_type.localeCompare(b.shift_type))
+    ? shifts.filter(s => s.shift_date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time))
     : []
 
   // Diensttypes die op de geselecteerde dag nog ontbreken (toe te voegen).
@@ -986,7 +986,7 @@ function QuickApprovePanel({
   onApproveAll: (ids: string[]) => void
 }) {
   const rows: { shift: ShiftWithAssignments; student: NonNullable<ShiftWithAssignments['assigned_students']>[number] }[] = []
-  for (const s of [...shifts].sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.shift_type.localeCompare(b.shift_type))) {
+  for (const s of [...shifts].sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))) {
     for (const st of (s.assigned_students || []).filter(a => a.status === 'pending')) {
       rows.push({ shift: s, student: st })
     }

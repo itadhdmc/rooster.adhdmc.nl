@@ -95,7 +95,7 @@ export default function Beschikbaarheid() {
       supabase.from('shifts_with_assignments')
         .select('*')
         .eq('period_id', selectedPeriod.id)
-        .order('shift_date').order('shift_type'),
+        .order('shift_date').order('start_time'),
       supabase.from('assignments')
         .select('*, shifts(*)')
         .eq('user_id', profile.id),

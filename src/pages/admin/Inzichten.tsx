@@ -60,7 +60,7 @@ export default function Inzichten() {
       supabase.from('shifts_with_assignments')
         .select('*')
         .eq('period_id', selectedPeriod.id)
-        .order('shift_date').order('shift_type'),
+        .order('shift_date').order('start_time'),
       supabase.from('assignments')
         .select('user_id, attendance, custom_start_time, custom_end_time, shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours, period_id)')
         .eq('status', 'approved')

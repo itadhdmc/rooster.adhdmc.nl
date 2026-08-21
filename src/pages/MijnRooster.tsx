@@ -147,7 +147,7 @@ export default function MijnRooster() {
         return shift.shift_date >= start && shift.shift_date <= end
       })
       .sort((a, b) => a.shifts!.shift_date.localeCompare(b.shifts!.shift_date)
-        || a.shifts!.shift_type.localeCompare(b.shifts!.shift_type))
+        || a.shifts!.start_time.localeCompare(b.shifts!.start_time))
       // Afwijkende werktijden (door de admin ingesteld) gaan vóór de
       // standaardtijden — ook in de agenda-sync en urentelling.
       .map(a => ({ ...a, shift: effectiveShift(a.shifts!, a) }))
