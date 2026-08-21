@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
+import { supportEmail } from '../hooks/useSettings'
 
 interface Props {
   children: ReactNode
@@ -43,7 +44,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             Pagina opnieuw laden
           </button>
           <p className="text-xs text-gray-300 mt-4">
-            <a href="mailto:ictservicedesk@adhdmc.nl" className="hover:text-dark transition-colors">ictservicedesk@adhdmc.nl</a>
+            <a href={`mailto:${supportEmail()}`} className="hover:text-dark transition-colors">{supportEmail()}</a>
           </p>
         </div>
       </div>

@@ -179,10 +179,17 @@ async function getAccessToken(userId: string): Promise<string | null> {
   return tok.access_token as string
 }
 
-function eventBody(shift: Shift) {
+// Instelbaar agenda-label (app_settings.calendar_label); het oude
+// ADHDMC-label is de fallback zolang migratie 0023 niet is uitgevoerd.
+async function calendarLabel(): Promise<string> {
+  const { data } = await admin.from('app_settings').select('calendar_label').eq('id', 1).maybeSingle()
+  return data?.calendar_label ?? 'ADHDMC Zorgadministratie'
+}
+
+function eventBody(shift: Shift, label: string) {
   const title = shift.shift_type === 'ochtend'
-    ? 'Ochtenddienst – ADHDMC Zorgadministratie'
-    : 'Middagdienst – ADHDMC Zorgadministratie'
+    ? `Ochtenddienst – ${label}`
+    : `Middagdienst – ${label}`
 
   return {
     summary: title,
@@ -207,7 +214,7 @@ async function createEvent(shift: Shift, token: string, assignmentId: string): P
   const res = await fetch(CALENDAR_API, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, ...eventBody(shift) }),
+    body: JSON.stringify({ id, ...eventBody(shift, await calendarLabel()) }),
   })
   if (res.ok) return id
   // 409 = bestaat al -> bijwerken zodat de tijden kloppen.
@@ -223,7 +230,7 @@ async function updateEvent(shift: Shift, token: string, eventId: string): Promis
   const res = await fetch(`${CALENDAR_API}/${eventId}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(eventBody(shift)),
+    body: JSON.stringify(eventBody(shift, await calendarLabel())),
   })
   if (!res.ok) {
     console.error('event bijwerken mislukt:', await res.text())

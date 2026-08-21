@@ -196,3 +196,23 @@ Mag later (niet nodig om A waar te maken):
 - Microsoft SSO
 - Event-id prefix `adhdmc` in `calendar.ts` (alleen branding in hun agenda;
   functioneel oké per geïsoleerde Workspace)
+
+---
+
+## 5. Acceptatietest (15 min, per nieuwe omgeving)
+
+1. Log in met een tweede (medewerker-)account → domeincheck en profiel.
+2. Maak een periode aan → capaciteit per weekdag klopt met de instellingen.
+3. Meld aan (bulk), keur goed → melding + e-mail komen aan (afzender klopt).
+4. Reservelijst: plaats, promoveer, verwijder → drie mails.
+5. Werktijd-preset (vroeg/laat) → zichtbaar in Mijn rooster + agenda-sync.
+6. Urenexport (overzicht + detail) → kolommen en pauzeregel kloppen.
+7. Logboek: alle bovenstaande acties zijn terug te zien.
+
+## 6. Functionele beperkingen om in de verkoop te benoemen
+
+- **Twee dagdelen** per dag (namen/tijden vrij instelbaar, aantal niet).
+- Kalenders tonen **ma–za**; zondag als roosterdag werkt in lijstweergaves,
+  maar niet in de weektabellen.
+- **Teksten** van meldingen/e-mails zijn Nederlands en niet per klant
+  aanpasbaar (afzender en links wél).

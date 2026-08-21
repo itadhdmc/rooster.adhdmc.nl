@@ -33,7 +33,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_ALLOWED_DOMAIN: adhdmc.nl
+          # Per-klant instelbaar via een repo/environment-variabele.
+          VITE_ALLOWED_DOMAIN: ${{ vars.VITE_ALLOWED_DOMAIN || 'adhdmc.nl' }}
 
       # De FTP-server van Cloud86 geeft af en toe timeouts; daarom drie
       # pogingen met een ruime timeout voordat de workflow echt faalt.

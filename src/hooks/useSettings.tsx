@@ -124,6 +124,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const s = data ? normalize(data) : DEFAULT_SETTINGS
     setSettings(s)
     applyThemeColors(s.color_primary, s.color_dark)
+    _supportEmail = s.support_email
+    document.title = `${s.org_name} Rooster`
     setLoaded(true)
   }
 
@@ -138,6 +140,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
 export function useSettings() {
   return useContext(SettingsContext)
+}
+
+// Module-niveau getter voor plekken buiten de React-boom (ErrorBoundary).
+let _supportEmail = DEFAULT_SETTINGS.support_email
+export function supportEmail(): string {
+  return _supportEmail
 }
 
 // ------------------------------------------------------------

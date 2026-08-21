@@ -1,5 +1,11 @@
 # ADHDMC Rooster — Setup gids
 
+> ⚠️ **Verouderd op punten.** Het actuele stappenplan voor een (nieuwe)
+> omgeving staat in [`docs/klant-inrichten.md`](docs/klant-inrichten.md).
+> Databaseschema: voer de genummerde bestanden in `supabase/migrations/`
+> in volgorde uit (niet `supabase_schema.sql`).
+
+
 ## 1. Supabase project aanmaken
 
 1. Ga naar [supabase.com](https://supabase.com) en maak een gratis account
