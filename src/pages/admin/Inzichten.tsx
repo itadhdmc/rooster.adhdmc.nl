@@ -152,6 +152,7 @@ export default function Inzichten() {
             <StatCard label="Ziekmeldingen" value={String(totalSick)} color={totalSick > 0 ? 'text-rose-500' : 'text-dark'} />
           </div>
 
+          <div className="grid xl:grid-cols-2 gap-5 items-start">
           {/* Bezettingsradar */}
           <div className="card overflow-hidden">
             <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2.5">
@@ -255,6 +256,7 @@ export default function Inzichten() {
                 <p className="px-5 py-8 text-sm text-gray-400 text-center">Geen actieve medewerkers gevonden.</p>
               )}
             </div>
+          </div>
           </div>
 
           {/* Legenda */}

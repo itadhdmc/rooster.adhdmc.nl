@@ -191,6 +191,7 @@ export default function Financien() {
             </div>
           ) : (
             <>
+              <div className="grid xl:grid-cols-2 gap-5 items-start">
               {/* Grafiek: uren per week */}
               <div className="card p-5">
                 <h2 className="font-bold text-dark text-sm mb-1">Verloonde uren per week</h2>
@@ -241,6 +242,8 @@ export default function Financien() {
                   })}
                 </div>
                 <Legenda week={kleurWeek} toeslag={kleurToeslag} label={toeslagLabel} />
+              </div>
+
               </div>
 
               {/* Tabel: zelfde cijfers als de export */}

@@ -64,8 +64,13 @@ export default function Logboek() {
 
   if (loading) return <Spinner />
 
+  const actionCounts = entries.reduce<Record<string, number>>((acc, e) => {
+    acc[e.action] = (acc[e.action] || 0) + 1
+    return acc
+  }, {})
+
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5">
       {/* Header */}
       <div>
         <Link to="/admin" className="text-xs text-gray-400 hover:text-dark transition-colors font-medium">
@@ -77,28 +82,38 @@ export default function Logboek() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid lg:grid-cols-4 gap-5 items-start">
+      {/* Zijkolom: zoeken + filteren op actietype */}
+      <div className="space-y-4 order-1 lg:order-2">
         <input
           type="search"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Zoek op naam, datum of omschrijving..."
-          className="flex-1 min-w-[200px] border border-gray-200 bg-white rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-salmon-400"
+          placeholder="Zoek in het logboek…"
+          className="w-full border border-gray-200 bg-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-gray-400"
         />
-        <select
-          value={actionFilter}
-          onChange={e => setActionFilter(e.target.value)}
-          className="border border-gray-200 bg-white rounded-xl px-3 py-2 text-sm font-medium text-dark focus:outline-none"
-        >
-          <option value="">Alle acties</option>
-          {Object.entries(ACTION_STYLE).map(([key, s]) => (
-            <option key={key} value={key}>{s.label}</option>
+        <div className="card p-2">
+          <button onClick={() => setActionFilter('')}
+            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+              actionFilter === '' ? 'font-semibold text-dark bg-gray-100' : 'text-gray-500 hover:text-dark hover:bg-gray-50'
+            }`}>
+            Alle acties <span className="text-gray-300">({entries.length})</span>
+          </button>
+          {Object.entries(ACTION_STYLE).filter(([key]) => actionCounts[key]).map(([key, st]) => (
+            <button key={key} onClick={() => setActionFilter(actionFilter === key ? '' : key)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
+                actionFilter === key ? 'font-semibold text-dark bg-gray-100' : 'text-gray-500 hover:text-dark hover:bg-gray-50'
+              }`}>
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${st.dot}`} />
+              <span className="flex-1">{st.label}</span>
+              <span className="text-xs text-gray-300">{actionCounts[key]}</span>
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* Entries */}
+      <div className="lg:col-span-3 space-y-5 order-2 lg:order-1">
       {filtered.length === 0 ? (
         <div className="card p-16 text-center">
           <h2 className="text-base font-bold text-dark">Geen logregels</h2>
@@ -153,6 +168,8 @@ export default function Logboek() {
           {loadingMore ? 'Laden...' : 'Meer laden'}
         </button>
       )}
+      </div>
+      </div>
     </div>
   )
 }

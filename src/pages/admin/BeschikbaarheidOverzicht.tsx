@@ -51,7 +51,7 @@ export default function BeschikbaarheidOverzicht() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-dark">Beschikbaarheid</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Overzicht per student en per dag</p>
+          <p className="text-gray-400 text-sm mt-0.5">Doorgegeven beschikbaarheid per dag en per medewerker</p>
         </div>
         {periods.length > 0 && (
           <select
@@ -64,23 +64,21 @@ export default function BeschikbaarheidOverzicht() {
         )}
       </div>
 
-      {/* Per student */}
+      <div className="grid lg:grid-cols-3 gap-5 items-start">
+      {/* Per medewerker (zijkolom) */}
       {totalByStudent.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Per student</p>
+        <div className="order-1 lg:order-2">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Per medewerker</p>
           <div className="card divide-y divide-gray-50">
             {totalByStudent.map(({ student, ochtend, middag, total }) => (
-              <div key={student.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: 'var(--color-dark)' }}>
-                    {(student.full_name || student.email)[0].toUpperCase()}
-                  </div>
-                  <p className="text-sm font-semibold text-dark">{student.full_name || student.email}</p>
+              <div key={student.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-dark truncate">{student.full_name || student.email}</p>
+                  <span className="text-xs text-gray-400 font-medium flex-shrink-0">{total} totaal</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs flex-shrink-0">
-                  <span className="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-semibold">{ochtend}× ochtend</span>
-                  <span className="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full font-semibold">{middag}× middag</span>
-                  <span className="text-gray-400 font-medium">{total} totaal</span>
+                <div className="flex items-center gap-1.5 text-[11px] mt-1">
+                  <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">{ochtend}× ochtend</span>
+                  <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">{middag}× middag</span>
                 </div>
               </div>
             ))}
@@ -88,8 +86,8 @@ export default function BeschikbaarheidOverzicht() {
         </div>
       )}
 
-      {/* Per dag */}
-      <div>
+      {/* Per dag (hoofdkolom) */}
+      <div className="lg:col-span-2 order-2 lg:order-1">
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Per dag</p>
         <div className="space-y-2">
           {workdays.map(day => {
@@ -130,6 +128,7 @@ export default function BeschikbaarheidOverzicht() {
             )
           })}
         </div>
+      </div>
       </div>
     </div>
   )

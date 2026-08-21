@@ -134,7 +134,7 @@ export default function Studenten() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-dark">Studenten</h1>
+          <h1 className="text-2xl font-bold text-dark">Medewerkers</h1>
           <p className="text-gray-400 text-sm mt-0.5">Beheer rollen, contracturen en toegang</p>
         </div>
         <button
@@ -145,63 +145,86 @@ export default function Studenten() {
         </button>
       </div>
 
-      {/* Pending invites */}
-      {pending.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-            Uitgenodigd — wacht op eerste login ({pending.length})
-          </p>
-          <div className="card divide-y divide-gray-50">
-            {pending.map(p => (
-              <div key={p.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold bg-gray-100 text-gray-400 flex-shrink-0">
-                    {p.full_name[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-dark">{p.full_name}</p>
-                    <p className="text-xs text-gray-400">{p.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full font-medium">
-                    Wacht op login
-                  </span>
-                  <button
-                    onClick={() => cancelInvite(p.id)}
-                    className="text-xs text-gray-400 hover:text-red-500 transition-colors font-medium"
-                  >
-                    Annuleer
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+      <div className="grid lg:grid-cols-3 gap-5 items-start">
+        {/* Hoofdlijst */}
+        <div className="lg:col-span-2 space-y-6">
+          <Section title={`Actieve medewerkers (${activeStudents.length})`}>
+            {activeStudents.length === 0
+              ? <p className="text-sm text-gray-400 py-6 text-center px-5">Nog geen actieve medewerkers. Ze verschijnen hier na hun eerste login.</p>
+              : activeStudents.map(s => <StudentRow key={s.id} student={s} {...sharedRowProps} />)}
+          </Section>
+
+          <Section title={`Beheerders (${admins.length})`}>
+            {admins.map(s => <StudentRow key={s.id} student={s} {...sharedRowProps} />)}
+          </Section>
+
+          {inactiveStudents.length > 0 && (
+            <Section title={`Inactief (${inactiveStudents.length})`}>
+              {inactiveStudents.map(s => <StudentRow key={s.id} student={s} {...sharedRowProps} />)}
+            </Section>
+          )}
         </div>
-      )}
 
-      <Section title={`Admins (${admins.length})`}>
-        {admins.map(s => <StudentRow key={s.id} student={s} {...sharedRowProps} />)}
-      </Section>
+        {/* Zijkolom: kerncijfers + uitnodigingen */}
+        <div className="space-y-4">
+          <div className="card p-5">
+            <p className="text-sm font-semibold text-dark mb-3">Overzicht</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-2xl font-bold text-dark">{activeStudents.length}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Actief</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-dark">{admins.length}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Beheerders</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-dark">{pending.length}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Uitgenodigd</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-300">{inactiveStudents.length}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Inactief</p>
+              </div>
+            </div>
+          </div>
 
-      <Section title={`Actieve studenten (${activeStudents.length})`}>
-        {activeStudents.length === 0
-          ? <p className="text-sm text-gray-400 py-6 text-center px-5">Geen actieve studenten. Studenten verschijnen hier na hun eerste login.</p>
-          : activeStudents.map(s => <StudentRow key={s.id} student={s} {...sharedRowProps} />)}
-      </Section>
-
-      {inactiveStudents.length > 0 && (
-        <Section title={`Inactief (${inactiveStudents.length})`}>
-          {inactiveStudents.map(s => <StudentRow key={s.id} student={s} {...sharedRowProps} />)}
-        </Section>
-      )}
+          {pending.length > 0 && (
+            <div className="card p-5">
+              <p className="text-sm font-semibold text-dark mb-1">Uitgenodigd</p>
+              <p className="text-xs text-gray-400 mb-3">Wachten op hun eerste login.</p>
+              <div className="space-y-2.5">
+                {pending.map(p => (
+                  <div key={p.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-400 flex-shrink-0">
+                        {p.full_name[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-dark truncate">{p.full_name}</p>
+                        <p className="text-xs text-gray-400 truncate">{p.email}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => cancelInvite(p.id)}
+                      className="text-xs text-gray-400 hover:text-red-500 transition-colors font-medium flex-shrink-0"
+                    >
+                      Annuleer
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Invite modal */}
       {showInviteModal && (
-        <Modal title="Student uitnodigen" onClose={() => setShowInviteModal(false)}>
+        <Modal title="Medewerker uitnodigen" onClose={() => setShowInviteModal(false)}>
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
-              Voeg een student toe zodat ze al in het systeem staan vóór hun eerste login.
+              Voeg een medewerker toe zodat ze al in het systeem staan vóór hun eerste login.
               Zodra ze inloggen met hun @{settings.allowed_domain} account worden ze automatisch gekoppeld.
             </p>
 
