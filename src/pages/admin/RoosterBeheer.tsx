@@ -474,6 +474,9 @@ export default function RoosterBeheer() {
         <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-rose-200 inline-block" /> Leeg</span>
       </div>
 
+      {/* Kalender + dagpaneel: naast elkaar op brede schermen */}
+      <div className={selectedDate ? 'space-y-6 xl:space-y-0 xl:grid xl:grid-cols-5 xl:gap-5 xl:items-start' : ''}>
+      <div className={selectedDate ? 'xl:col-span-3' : ''}>
       {/* Calendar grid */}
       <div className="card overflow-hidden">
         <div className="grid grid-cols-6 border-b border-gray-100" style={{ backgroundColor: 'var(--color-dark)' }}>
@@ -534,11 +537,13 @@ export default function RoosterBeheer() {
           ))}
         </div>
       </div>
+      </div>
 
       {/* Selected day panel */}
       {selectedDate && (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between" style={{ backgroundColor: 'var(--color-dark)' }}>
+        <div className="xl:col-span-2">
+        <div className="card overflow-hidden xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10" style={{ backgroundColor: 'var(--color-dark)' }}>
             <p className="font-bold text-white capitalize text-sm">{formatDate(selectedDate)}</p>
             <button onClick={() => setSelectedDate(null)} className="text-white/50 hover:text-white text-xl leading-none">×</button>
           </div>
@@ -971,7 +976,9 @@ export default function RoosterBeheer() {
             </div>
           )}
         </div>
+        </div>
       )}
+      </div>
     </div>
   )
 }
