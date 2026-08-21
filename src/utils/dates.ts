@@ -29,6 +29,14 @@ export function getRosterDaysInMonth(year: number, month: number): Date[] {
   return eachDayOfInterval({ start, end }).filter(d => d.getDay() !== 0)
 }
 
+// Alle dagen van een maand die op de gegeven ISO-weekdagen (1=ma..7=zo)
+// vallen — de generieke opvolger van getWorkdays/getRosterDays.
+export function daysForWeekdays(year: number, month: number, weekdays: number[]): Date[] {
+  const start = startOfMonth(new Date(year, month - 1))
+  const end = endOfMonth(new Date(year, month - 1))
+  return eachDayOfInterval({ start, end }).filter(d => weekdays.includes(d.getDay() === 0 ? 7 : d.getDay()))
+}
+
 export function isSaturday(date: Date): boolean {
   return date.getDay() === 6
 }

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Assignment, ShiftWithAssignments, Profile, RosterPeriod } from '../../types'
-import { formatDate, monthLabel, dateToISO, getWeeksInMonth, getRosterDaysInMonth, isSaturday } from '../../utils/dates'
+import { formatDate, monthLabel, dateToISO, getWeeksInMonth, daysForWeekdays } from '../../utils/dates'
 import { useSettings, maxStudentsFor } from '../../hooks/useSettings'
 import { hoursBetween } from '../../utils/shiftTimes'
 
@@ -288,16 +288,18 @@ export default function RoosterBeheer() {
     setProcessing(null)
   }
 
-  // Voeg ontbrekende zaterdagen toe aan deze (bestaande) periode, max 1 student.
-  async function addSaturdays(dates: string[]) {
+  // Voeg roosterdagen zonder diensten toe aan deze (bestaande) periode,
+  // met de capaciteit per weekdag uit de instellingen.
+  async function addMissingDays(dates: string[]) {
     if (!period || dates.length === 0) return
-    setProcessing('saturdays')
+    setProcessing('missingdays')
 
     // Gebruik de tijden/types die al in deze periode voorkomen; anders standaard.
     const types = periodTemplates()
 
     const newShifts = []
     for (const iso of dates) {
+      const capacity = maxStudentsFor(settings, new Date(iso + 'T00:00:00'))
       for (const [shift_type, tpl] of Object.entries(types)) {
         newShifts.push({
           period_id: period.id,
@@ -306,13 +308,13 @@ export default function RoosterBeheer() {
           start_time: tpl.start_time,
           end_time: tpl.end_time,
           duration_hours: tpl.duration_hours,
-          max_students: 1,
+          max_students: capacity,
         })
       }
     }
 
     const { error } = await supabase.from('shifts').insert(newShifts)
-    if (error) alert('Zaterdagen toevoegen mislukt: ' + error.message)
+    if (error) alert('Dagen toevoegen mislukt: ' + error.message)
     await loadAll()
     setProcessing(null)
   }
@@ -377,13 +379,10 @@ export default function RoosterBeheer() {
   const weeks = getWeeksInMonth(period.year, period.month)
 
   // Zaterdagen in deze maand die nog geen enkele dienst hebben.
-  const saturdayDatesWithShifts = new Set(
-    shifts.filter(s => new Date(s.shift_date + 'T00:00:00').getDay() === 6).map(s => s.shift_date)
-  )
-  const missingSaturdays = getRosterDaysInMonth(period.year, period.month)
-    .filter(isSaturday)
+  const datesWithShifts = new Set(shifts.map(s => s.shift_date))
+  const missingDays = daysForWeekdays(period.year, period.month, settings.roster_weekdays)
     .map(dateToISO)
-    .filter(iso => !saturdayDatesWithShifts.has(iso))
+    .filter(iso => !datesWithShifts.has(iso))
 
   return (
     <div className="space-y-5">
@@ -446,22 +445,22 @@ export default function RoosterBeheer() {
         />
       )}
 
-      {/* Zaterdagen toevoegen aan bestaande periode */}
-      {missingSaturdays.length > 0 && (
+      {/* Ontbrekende roosterdagen toevoegen aan bestaande periode */}
+      {missingDays.length > 0 && (
         <div className="card p-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-dark">
-              {missingSaturdays.length} zaterdag{missingSaturdays.length !== 1 ? 'en' : ''} zonder dienst
+              {missingDays.length} roosterdag{missingDays.length !== 1 ? 'en' : ''} zonder dienst
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">Voeg ze toe met max 1 student per dienst.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Voeg ze toe met de capaciteit per dag uit de instellingen.</p>
           </div>
           <button
-            onClick={() => addSaturdays(missingSaturdays)}
-            disabled={processing === 'saturdays'}
+            onClick={() => addMissingDays(missingDays)}
+            disabled={processing === 'missingdays'}
             className="text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
-            {processing === 'saturdays' ? 'Toevoegen...' : 'Zaterdagen toevoegen'}
+            {processing === 'missingdays' ? 'Toevoegen...' : 'Dagen toevoegen'}
           </button>
         </div>
       )}

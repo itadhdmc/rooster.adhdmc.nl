@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { getWorkdaysInMonth, getRosterDaysInMonth, isSaturday, dateToISO, monthLabel } from '../../utils/dates'
+import { daysForWeekdays, dateToISO, monthLabel } from '../../utils/dates'
 import { useSettings, maxStudentsFor } from '../../hooks/useSettings'
 import { hoursBetween } from '../../utils/shiftTimes'
 
@@ -18,7 +18,6 @@ export default function NieuwePeriode() {
   const [deadline, setDeadline] = useState('')
   const [includeOchtend, setIncludeOchtend] = useState(true)
   const [includeMiddag, setIncludeMiddag] = useState(true)
-  const [includeSaturday, setIncludeSaturday] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -31,9 +30,8 @@ export default function NieuwePeriode() {
     duration_hours: hoursBetween(t.start, t.end),
   }))
 
-  const days = includeSaturday ? getRosterDaysInMonth(year, month) : getWorkdaysInMonth(year, month)
-  const workdays = getWorkdaysInMonth(year, month)
-  const saturdays = days.filter(isSaturday)
+  // Roosterbare dagen volgen de instellingen (bijv. ma–za).
+  const days = daysForWeekdays(year, month, settings.roster_weekdays)
   const selectedTypes = shiftTemplates.filter(t =>
     (t.shift_type === 'ochtend' && includeOchtend) ||
     (t.shift_type === 'middag' && includeMiddag)
@@ -116,7 +114,8 @@ export default function NieuwePeriode() {
             </select>
           </div>
           <p className="text-xs text-gray-400 mt-1.5">
-            {workdays.length} werkdagen{includeSaturday && saturdays.length > 0 ? ` + ${saturdays.length} zaterdagen` : ''} in {monthLabel(year, month)}
+            {days.length} roosterdagen in {monthLabel(year, month)} — welke weekdagen meetellen stel je in via{' '}
+            <Link to="/admin/instellingen/rooster" className="underline hover:text-dark">Instellingen → Rooster</Link>
           </p>
         </div>
 
@@ -184,24 +183,6 @@ export default function NieuwePeriode() {
             De capaciteit per dag komt uit{' '}
             <Link to="/admin/instellingen/rooster" className="underline hover:text-dark">Instellingen → Rooster</Link>.
           </p>
-        </div>
-
-        {/* Zaterdag */}
-        <div>
-          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Zaterdag</label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <div
-              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors"
-              style={{ borderColor: includeSaturday ? 'var(--color-primary)' : '#d1d5db', backgroundColor: includeSaturday ? 'var(--color-primary)' : 'white' }}
-              onClick={() => setIncludeSaturday(!includeSaturday)}
-            >
-              {includeSaturday && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-dark">Zaterdagen meenemen</p>
-              <p className="text-xs text-gray-400">Altijd maar 1 student per zaterdagdienst</p>
-            </div>
-          </label>
         </div>
 
         {/* Summary */}
