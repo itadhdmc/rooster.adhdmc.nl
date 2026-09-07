@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useSettings, shiftTypeConfig } from '../hooks/useSettings'
 import { supabase } from '../lib/supabase'
 import { getGoogleToken, signInWithGoogle } from '../lib/auth'
-import { createCalendarEvent, deleteCalendarEvent, repairMonthEvents, eventIdFor } from '../lib/calendar'
+import { createCalendarEvent, deleteCalendarEvent, reconcileEvents, eventIdFor, SyncItem } from '../lib/calendar'
 import { Shift, Assignment, AssignmentWithShiftJoin, SwappableAssignment, ShiftWithAssignments } from '../types'
 import { formatDate, monthLabel, isoWeek, dateToISO } from '../utils/dates'
 import { effectiveShift } from '../utils/shiftTimes'
@@ -35,7 +35,7 @@ export default function MijnRooster() {
   const [autoSyncSuccess, setAutoSyncSuccess] = useState(false)
   const [autoSynced, setAutoSynced] = useState(false)
   const [repairing, setRepairing] = useState(false)
-  const [autoCleaned, setAutoCleaned] = useState(false)
+  const [reconciled, setReconciled] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -65,55 +65,61 @@ export default function MijnRooster() {
     loadAssignments()
   }, [profile, selectedMonth])
 
-  // Auto-sync newly approved shifts when both token and assignments are ready
+  // Auto-sync newly approved shifts when both token and assignments are ready.
+  // Pas ná de reconcile, anders lopen de twee door elkaar heen.
   useEffect(() => {
-    if (loading || autoSynced || !googleToken) return
+    if (loading || autoSynced || !googleToken || !reconciled) return
     const unsynced = assignments.filter(a => a.status === 'approved' && !a.google_calendar_event_id)
     if (unsynced.length === 0) return
     setAutoSynced(true)
     runAutoSync(unsynced, googleToken)
-  }, [loading, googleToken, assignments, autoSynced])
+  }, [loading, googleToken, assignments, autoSynced, reconciled])
 
-  // Eenmalige, stille opschoning per gebruiker: verwijdert oude dubbele
-  // agenda-afspraken (van vóór de fix) en houdt er één per dienst over.
+  // Stille opschoning bij élke keer laden: legt de agenda gelijk aan het
+  // rooster voor deze en volgende maand. Nodig omdat een ruil, afmelding of
+  // wijziging door de admin server-side gebeurt — zonder deze stap blijft de
+  // oude afspraak (mét herinnering) gewoon in de agenda staan.
   useEffect(() => {
-    if (!profile || !googleToken || autoCleaned) return
-    const key = `cal-cleaned-v1-${profile.id}`
-    if (localStorage.getItem(key)) { setAutoCleaned(true); return }
-    setAutoCleaned(true)
-    runAutoCleanup(googleToken)
-      .then(() => localStorage.setItem(key, '1'))
-      .catch(() => {})
-  }, [profile, googleToken, autoCleaned])
+    if (!profile || !googleToken || reconciled) return
+    setReconciled(true)
+    runReconcile(googleToken).catch(() => {})
+  }, [profile, googleToken, reconciled])
 
-  async function runAutoCleanup(token: string) {
-    const now = new Date()
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-
+  // Alle goedgekeurde toewijzingen van deze gebruiker — ook buiten de getoonde
+  // maand. De reconcile heeft dat volledige beeld nodig: een dienst die naar
+  // een andere maand is geruild moet verplaatst worden, niet verwijderd.
+  async function loadApprovedForSync(): Promise<{ items: SyncItem[]; stored: Map<string, string | null> }> {
     const { data } = await supabase
       .from('assignments')
       .select('*, shifts(*)')
       .eq('user_id', profile!.id)
       .eq('status', 'approved')
 
-    const items = ((data || []) as AssignmentWithShiftJoin[])
-      .filter(a => a.shifts)
-      .map(a => ({ id: a.id, shift: effectiveShift(a.shifts!, a) }))
-      .filter(it => it.shift.shift_date >= monthStart)
-    if (items.length === 0) return
+    const rows = ((data || []) as AssignmentWithShiftJoin[]).filter(a => a.shifts)
+    return {
+      items: rows.map(a => ({ id: a.id, shift: effectiveShift(a.shifts!, a) })),
+      stored: new Map(rows.map(a => [a.id, a.google_calendar_event_id])),
+    }
+  }
 
-    const byMonth = new Map<string, { id: string; shift: Shift }[]>()
-    for (const it of items) {
-      const key = it.shift.shift_date.slice(0, 7)
-      if (!byMonth.has(key)) byMonth.set(key, [])
-      byMonth.get(key)!.push(it)
+  // Legt de agenda-id's in de database vast voor de diensten die nu echt in de
+  // agenda staan (de ruil-RPC zet ze op NULL).
+  async function persistSynced(synced: string[], stored: Map<string, string | null>) {
+    for (const id of synced) {
+      if (stored.get(id) !== eventIdFor(id)) await persistEventId(id, eventIdFor(id))
     }
-    for (const [key, group] of byMonth) {
-      const [y, m] = key.split('-').map(Number)
-      await repairMonthEvents(token, group, y, m, settings.calendar_label)
-      for (const a of group) await persistEventId(a.id, eventIdFor(a.id))
-    }
-    await loadAssignments()
+  }
+
+  async function runReconcile(token: string) {
+    const now = new Date()
+    const from  = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1))
+    const until = dateToISO(new Date(now.getFullYear(), now.getMonth() + 2, 1))
+
+    const { items, stored } = await loadApprovedForSync()
+    const { removed, written, synced } = await reconcileEvents(token, items, from, until, settings.calendar_label)
+
+    await persistSynced(synced, stored)
+    if (removed > 0 || written > 0) await loadAssignments()
   }
 
   async function runAutoSync(unsynced: AssignmentWithShift[], token: string) {
@@ -258,19 +264,27 @@ export default function MijnRooster() {
     for (const a of unsynced) await syncShift(a)
   }
 
-  // Ruimt dubbele agenda-afspraken op en zet elke dienst nog één keer neer.
+  // Legt de agenda van de getoonde maand gelijk aan het rooster: oude en
+  // dubbele afspraken weg, geruilde diensten naar de juiste dag, ontbrekende
+  // diensten erbij.
   async function repairSync() {
     if (!googleToken) return
     setRepairing(true)
     const [y, m] = selectedMonth.split('-').map(Number)
-    const approved = assignments.filter(a => a.status === 'approved').map(a => ({ id: a.id, shift: a.shift }))
-    const removed = await repairMonthEvents(googleToken, approved, y, m, settings.calendar_label)
-    for (const a of approved) await persistEventId(a.id, eventIdFor(a.id))
+    const from  = dateToISO(new Date(y, m - 1, 1))
+    const until = dateToISO(new Date(y, m, 1))
+    const { items, stored } = await loadApprovedForSync()
+    const { removed, written, synced } = await reconcileEvents(googleToken, items, from, until, settings.calendar_label)
+    await persistSynced(synced, stored)
     await loadAssignments()
     setRepairing(false)
-    alert(removed > 0
-      ? `${removed} dubbele afspraak/afspraken opgeruimd. Elke dienst staat nu nog één keer in je agenda.`
-      : 'Geen duplicaten gevonden — alles staat netjes één keer in je agenda.')
+    const delen = [
+      removed > 0 ? `${removed} oude of dubbele afspraak/afspraken opgeruimd` : null,
+      written > 0 ? `${written} afspraak/afspraken toegevoegd of verplaatst` : null,
+    ].filter(Boolean)
+    alert(delen.length > 0
+      ? `${delen.join(' en ')}. Je agenda klopt weer met je rooster.`
+      : 'Alles klopt al — je agenda loopt gelijk met je rooster.')
   }
 
   function shiftMonth(delta: number) {
@@ -447,9 +461,9 @@ export default function MijnRooster() {
                   )}
                   {approvedAssignments.length > 0 && (
                     <button onClick={repairSync} disabled={repairing || autoSyncing}
-                      title="Verwijder dubbele afspraken en zet elke dienst één keer in je agenda"
+                      title="Ruim oude en dubbele afspraken op en zet elke dienst op de juiste dag in je agenda"
                       className="text-xs font-medium px-3.5 py-2 rounded-xl border border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300 transition-colors disabled:opacity-50">
-                      {repairing ? 'Opruimen…' : 'Dubbele opruimen'}
+                      {repairing ? 'Opruimen…' : 'Agenda opschonen'}
                     </button>
                   )}
                 </div>

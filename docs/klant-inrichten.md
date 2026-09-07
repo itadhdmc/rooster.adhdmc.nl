@@ -74,7 +74,11 @@ VWO getekend:          ja/nee
    - Site URL = portal-URL
    - Redirect: `https://<portal>/auth/callback`
    - én `https://<project-ref>.supabase.co/auth/v1/callback` in Google
-5. Database-webhooks later (alleen als je calendar-sync aanzet).
+5. Database-webhook voor `calendar-sync` — **aanraden**, zie
+   `supabase/functions/calendar-sync/README.md`. Staat die uit, dan wordt de
+   agenda alleen bijgewerkt als de medewerker zelf Mijn rooster opent; een
+   weggeruilde of geannuleerde dienst blijft dan met herinnering in zijn Google
+   Agenda staan.
 
 Migraties:
 

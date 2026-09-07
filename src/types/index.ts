@@ -115,6 +115,7 @@ export type NotificationType =
   | 'shift_approved'
   | 'shift_rejected'
   | 'shift_reserve'
+  | 'shift_removed'
   | 'admin_pending'
   | 'spot_available'
   | 'swap_request'
