@@ -80,32 +80,47 @@ ziek AS (
          SUM(uren) FILTER (WHERE attendance = 'ziek')    AS ziek_uren,
          SUM(uren) FILTER (WHERE attendance = 'afwezig') AS afwezig_uren
   FROM regels GROUP BY user_id
+),
+-- Per medewerker optellen. Apart van "ziek", want wie in het bereik
+-- alleen ziek of afwezig stond heeft geen gewerkte dagen en zou bij een
+-- gewone join uit de lijst vallen — juist die regel moet zichtbaar zijn.
+werk AS (
+  SELECT user_id,
+         COUNT(*)                                                      AS gewerkte_dagen,
+         SUM(verloond) FILTER (WHERE NOT toeslagdag)                   AS uren_doordeweeks,
+         SUM(verloond) FILTER (WHERE toeslagdag)                       AS uren_toeslagdag,
+         SUM(pauze)                                                    AS pauze_uren,
+         SUM(verloond)                                                 AS totaal_uren,
+         -- Wat de oude, kapotte export wél gaf: alleen de dagen vanaf
+         -- de 1e van de eindmaand.
+         SUM(verloond) FILTER (
+           WHERE shift_date >= DATE_TRUNC('month', (SELECT tot FROM bereik))::date) AS oude_export_uren,
+         -- Het verschil: de uren die niet verloond zijn. Gesplitst, want op
+         -- de toeslagdagen zit een andere beloning dan op doordeweekse dagen.
+         SUM(verloond) FILTER (
+           WHERE shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date) AS gemist_uren,
+         SUM(verloond) FILTER (
+           WHERE shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date
+             AND NOT toeslagdag)                                       AS gemist_doordeweeks,
+         SUM(verloond) FILTER (
+           WHERE shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date
+             AND toeslagdag)                                           AS gemist_toeslagdag
+  FROM dagtotaal GROUP BY user_id
 )
-SELECT COALESCE(p.full_name, p.email)                                        AS naam,
+SELECT COALESCE(p.full_name, p.email)                 AS naam,
        p.email,
-       COUNT(*)                                                              AS gewerkte_dagen,
-       ROUND(COALESCE(SUM(t.verloond) FILTER (WHERE NOT t.toeslagdag), 0), 2) AS uren_doordeweeks,
-       ROUND(COALESCE(SUM(t.verloond) FILTER (WHERE t.toeslagdag), 0), 2)     AS uren_toeslagdag,
-       ROUND(COALESCE(SUM(t.pauze), 0), 2)                                    AS pauze_uren_onbetaald,
-       ROUND(COALESCE(SUM(t.verloond), 0), 2)                                 AS totaal_verloonde_uren,
-       ROUND(COALESCE(z.ziek_uren, 0), 2)                                     AS ziek_uren,
-       ROUND(COALESCE(z.afwezig_uren, 0), 2)                                  AS afwezig_uren,
-       -- Wat de oude, kapotte export wél gaf: alleen de dagen vanaf de 1e
-       -- van de eindmaand.
-       ROUND(COALESCE(SUM(t.verloond) FILTER (
-         WHERE t.shift_date >= DATE_TRUNC('month', (SELECT tot FROM bereik))::date), 0), 2) AS oude_export_uren,
-       -- Het verschil: de uren die niet verloond zijn. Gesplitst, want op
-       -- de toeslagdagen zit een andere beloning dan op doordeweekse dagen.
-       ROUND(COALESCE(SUM(t.verloond) FILTER (
-         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date), 0), 2)  AS gemist_door_oude_export,
-       ROUND(COALESCE(SUM(t.verloond) FILTER (
-         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date
-           AND NOT t.toeslagdag), 0), 2)                                                    AS gemist_doordeweeks,
-       ROUND(COALESCE(SUM(t.verloond) FILTER (
-         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date
-           AND t.toeslagdag), 0), 2)                                                        AS gemist_toeslagdag
-FROM dagtotaal t
-JOIN profiles p ON p.id = t.user_id
-LEFT JOIN ziek z ON z.user_id = t.user_id
-GROUP BY p.full_name, p.email, z.ziek_uren, z.afwezig_uren
+       COALESCE(w.gewerkte_dagen, 0)                  AS gewerkte_dagen,
+       ROUND(COALESCE(w.uren_doordeweeks, 0), 2)      AS uren_doordeweeks,
+       ROUND(COALESCE(w.uren_toeslagdag, 0), 2)       AS uren_toeslagdag,
+       ROUND(COALESCE(w.pauze_uren, 0), 2)            AS pauze_uren_onbetaald,
+       ROUND(COALESCE(w.totaal_uren, 0), 2)           AS totaal_verloonde_uren,
+       ROUND(COALESCE(z.ziek_uren, 0), 2)             AS ziek_uren,
+       ROUND(COALESCE(z.afwezig_uren, 0), 2)          AS afwezig_uren,
+       ROUND(COALESCE(w.oude_export_uren, 0), 2)      AS oude_export_uren,
+       ROUND(COALESCE(w.gemist_uren, 0), 2)           AS gemist_door_oude_export,
+       ROUND(COALESCE(w.gemist_doordeweeks, 0), 2)    AS gemist_doordeweeks,
+       ROUND(COALESCE(w.gemist_toeslagdag, 0), 2)     AS gemist_toeslagdag
+FROM werk w
+FULL OUTER JOIN ziek z USING (user_id)
+JOIN profiles p ON p.id = user_id
 ORDER BY naam;
