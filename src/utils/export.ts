@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { Profile, RosterPeriod } from '../types'
+import { Profile } from '../types'
 import { monthLabel, MONTHS_NL, isoWeek, isSaturdayISO } from './dates'
 import { rowHours, rowTimes, dayPaidHours, PauseConfig, DEFAULT_PAUSE } from './paidHours'
 
@@ -85,35 +85,47 @@ function triggerDownload(filename: string, csv: string) {
   URL.revokeObjectURL(url)
 }
 
-function ddmm(dateStr: string): string {
-  const [, m, d] = dateStr.split('-')
-  return `${d}-${m}`
+function ddmmyyyy(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-')
+  return `${d}-${m}-${y}`
 }
 
-
-// Bestandsnaamdeel voor het bereik: leeg bij een hele maand, anders "01-08-tm-15-08".
-function rangeSuffix(period: RosterPeriod, range: ExportRange): string {
-  const monthStart = `${period.year}-${String(period.month).padStart(2, '0')}-01`
-  const lastDay = new Date(period.year, period.month, 0).getDate()
-  const monthEnd = `${period.year}-${String(period.month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-  if (range.from === monthStart && range.to === monthEnd) return ''
-  return `-${ddmm(range.from)}-tm-${ddmm(range.to)}`
+// Valt het bereik precies samen met één hele kalendermaand? Dan mag de
+// export zich kort "september 2026" noemen in plaats van de datums.
+function wholeMonthOf(range: ExportRange): { year: number; month: number } | null {
+  const [fy, fm, fd] = range.from.split('-').map(Number)
+  const [ty, tm, td] = range.to.split('-').map(Number)
+  if (fy !== ty || fm !== tm || fd !== 1) return null
+  return td === new Date(fy, fm, 0).getDate() ? { year: fy, month: fm } : null
 }
 
-function rangeLabel(period: RosterPeriod, range: ExportRange): string {
-  const base = monthLabel(period.year, period.month)
-  return rangeSuffix(period, range) === '' ? base : `${base} (${ddmm(range.from)} t/m ${ddmm(range.to)})`
+// Bestandsnaamdeel voor het bereik: "september-2026" bij een hele maand,
+// anders het volledige bereik met jaar ("21-08-2026-tm-20-09-2026").
+// Het jaar hoort er expliciet bij: loonperiodes lopen over de maand- en
+// in december/januari over de jaargrens heen.
+function rangeSuffix(range: ExportRange): string {
+  const month = wholeMonthOf(range)
+  if (month) return `${MONTHS_NL[month.month - 1]}-${month.year}`
+  return `${ddmmyyyy(range.from)}-tm-${ddmmyyyy(range.to)}`
 }
 
-async function fetchApproved(period: RosterPeriod, range: ExportRange): Promise<
+function rangeLabel(range: ExportRange): string {
+  const month = wholeMonthOf(range)
+  return month ? monthLabel(month.year, month.month) : `${ddmmyyyy(range.from)} t/m ${ddmmyyyy(range.to)}`
+}
+
+// Haalt alle goedgekeurde diensten binnen het datumbereik op.
+// Bewust NIET op period_id filteren: een loonperiode loopt van de 21e tot
+// de 20e en beslaat dus twee roosterperiodes. Een filter op de gekozen
+// periode kapte de dagen uit de vorige maand er stilletjes af.
+async function fetchApproved(range: ExportRange): Promise<
   { ok: true; rows: AssignmentExportRow[]; profiles: Map<string, Pick<Profile, 'id' | 'full_name' | 'email'>> } | { ok: false; message: string }
 > {
-  const shiftCols = 'shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours, period_id)'
+  const shiftCols = 'shifts!inner(shift_date, shift_type, start_time, end_time, duration_hours)'
   const { data, error } = await supabase
     .from('assignments')
     .select(`*, ${shiftCols}`)
     .eq('status', 'approved')
-    .eq('shifts.period_id', period.id)
     .gte('shifts.shift_date', range.from)
     .lte('shifts.shift_date', range.to)
 
@@ -138,8 +150,8 @@ async function fetchApproved(period: RosterPeriod, range: ExportRange): Promise<
  * in doordeweeks en zaterdag (i.v.m. toeslag), ziekte- en afwezigheidsuren,
  * plus weektotalen per medewerker voor de loonadministratie.
  */
-export async function exportPeriodHours(period: RosterPeriod, range: ExportRange, cfg: ExportConfig = DEFAULT_EXPORT_CONFIG): Promise<{ ok: boolean; message?: string }> {
-  const res = await fetchApproved(period, range)
+export async function exportHours(range: ExportRange, cfg: ExportConfig = DEFAULT_EXPORT_CONFIG): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetchApproved(range)
   if (!res.ok) return res
 
   // Aggregeren per medewerker + per week. Gewerkte diensten worden per dag
@@ -203,7 +215,7 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
   const rows = [...totals.values()].sort((a, b) => a.name.localeCompare(b.name))
 
   const lines: string[] = []
-  lines.push(cell(`Urenexport ${rangeLabel(period, range)}`))
+  lines.push(cell(`Urenexport ${rangeLabel(range)}`))
   lines.push('')
   const header = [
     'Naam', 'E-mail', 'Gewerkte dagen', 'Gewerkte diensten', 'Ochtenddiensten', 'Middagdiensten',
@@ -241,9 +253,8 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
     ].join(';'))
   }
 
-  const monthName = MONTHS_NL[period.month - 1]
-  triggerDownload(`uren-${monthName}-${period.year}${rangeSuffix(period, range)}.csv`, lines.join('\r\n'))
-  return { ok: true, message: `Export voor ${rangeLabel(period, range)} gedownload.` }
+  triggerDownload(`uren-${rangeSuffix(range)}.csv`, lines.join('\r\n'))
+  return { ok: true, message: `Export voor ${rangeLabel(range)} gedownload.` }
 }
 
 /**
@@ -251,8 +262,8 @@ export async function exportPeriodHours(period: RosterPeriod, range: ExportRange
  * medewerker, werktijden, uren, zaterdag-markering en aanwezigheid.
  * Brondata voor controle en boekhouding.
  */
-export async function exportPeriodDetails(period: RosterPeriod, range: ExportRange, cfg: ExportConfig = DEFAULT_EXPORT_CONFIG): Promise<{ ok: boolean; message?: string }> {
-  const res = await fetchApproved(period, range)
+export async function exportDetails(range: ExportRange, cfg: ExportConfig = DEFAULT_EXPORT_CONFIG): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetchApproved(range)
   if (!res.ok) return res
 
   // Groeperen per dag + medewerker, zodat de pauze- en overlapcorrecties
@@ -270,7 +281,7 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
   })
 
   const lines: string[] = []
-  lines.push(cell(`Urenexport detail ${rangeLabel(period, range)}`))
+  lines.push(cell(`Urenexport detail ${rangeLabel(range)}`))
   lines.push('')
   lines.push(['Datum', 'Dag', 'Week', cap(cfg.premiumLabel), 'Naam', 'E-mail', 'Dagdeel', 'Van', 'Tot', 'Uren', 'Aanwezigheid'].map(cell).join(';'))
 
@@ -281,7 +292,7 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
     const prof = res.profiles.get(dayRows[0].user_id)
     const weekday = new Date(date + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'long' })
     const base = [
-      cell(ddmm(date) + '-' + period.year), cell(weekday), cell(`Week ${isoWeek(date)}`),
+      cell(ddmmyyyy(date)), cell(weekday), cell(`Week ${isoWeek(date)}`),
       cell(cfg.isPremium(date) ? 'ja' : 'nee'),
       cell(prof?.full_name || prof?.email || 'Onbekend'), cell(prof?.email || ''),
     ]
@@ -312,7 +323,6 @@ export async function exportPeriodDetails(period: RosterPeriod, range: ExportRan
   lines.push('')
   lines.push([cell('TOTAAL verloonde uren'), '', '', '', '', '', '', '', '', cell(nl(paidTotal)), ''].join(';'))
 
-  const monthName = MONTHS_NL[period.month - 1]
-  triggerDownload(`uren-detail-${monthName}-${period.year}${rangeSuffix(period, range)}.csv`, lines.join('\r\n'))
-  return { ok: true, message: `Detail-export voor ${rangeLabel(period, range)} gedownload.` }
+  triggerDownload(`uren-detail-${rangeSuffix(range)}.csv`, lines.join('\r\n'))
+  return { ok: true, message: `Detail-export voor ${rangeLabel(range)} gedownload.` }
 }

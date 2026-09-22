@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { RosterPeriod } from '../types'
-import { monthLabel, dateToISO } from '../utils/dates'
-import { exportPeriodHours, exportPeriodDetails, ExportRange, ExportConfig } from '../utils/export'
+import { monthLabel, dateToISO, MONTHS_NL } from '../utils/dates'
+import { exportHours, exportDetails, ExportRange, ExportConfig } from '../utils/export'
 import { useSettings, pauseConfig, isPremiumDate } from '../hooks/useSettings'
 
 // Eerste en laatste dag van de maand van een periode (ISO).
@@ -9,6 +9,31 @@ function monthBounds(period: RosterPeriod): { start: string; end: string } {
   const mm = String(period.month).padStart(2, '0')
   const lastDay = new Date(period.year, period.month, 0).getDate()
   return { start: `${period.year}-${mm}-01`, end: `${period.year}-${mm}-${String(lastDay).padStart(2, '0')}` }
+}
+
+// De loonperiode loopt van de 21e van de vorige maand t/m de 20e van deze
+// maand — hij kruist dus de maandgrens en beslaat twee roosterperiodes.
+const PAYROLL_START_DAY = 21
+const PAYROLL_END_DAY = 20
+
+function payrollBounds(period: RosterPeriod): ExportRange {
+  const prevMonth = period.month === 1 ? 12 : period.month - 1
+  const prevYear = period.month === 1 ? period.year - 1 : period.year
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return {
+    from: `${prevYear}-${pad(prevMonth)}-${pad(PAYROLL_START_DAY)}`,
+    to: `${period.year}-${pad(period.month)}-${pad(PAYROLL_END_DAY)}`,
+  }
+}
+
+// Leesbare omschrijving van het gekozen bereik, zodat zichtbaar is welke
+// maanden er in de export zitten.
+function describeRange(range: ExportRange): string {
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number)
+    return `${d} ${MONTHS_NL[m - 1]} ${y}`
+  }
+  return `${fmt(range.from)} t/m ${fmt(range.to)}`
 }
 
 // De urenexport-dialoog: datumbereik + overzicht- en detail-download.
@@ -21,8 +46,10 @@ export default function ExportDialog({ period, onClose }: { period: RosterPeriod
   const [exporting, setExporting] = useState<'overzicht' | 'detail' | null>(null)
 
   const today = dateToISO(new Date())
+  const payroll = payrollBounds(period)
   const todayInMonth = today >= start && today <= end
   const isWholeMonth = range.from === start && range.to === end
+  const isPayroll = range.from === payroll.from && range.to === payroll.to
   const isUntilToday = range.from === start && range.to === today
 
   async function runExport(kind: 'overzicht' | 'detail') {
@@ -37,8 +64,8 @@ export default function ExportDialog({ period, onClose }: { period: RosterPeriod
       isPremium: iso => isPremiumDate(settings, iso),
     }
     const res = kind === 'overzicht'
-      ? await exportPeriodHours(period, range, cfg)
-      : await exportPeriodDetails(period, range, cfg)
+      ? await exportHours(range, cfg)
+      : await exportDetails(range, cfg)
     setExporting(null)
     if (!res.ok) alert(res.message || 'Export mislukt.')
   }
@@ -58,11 +85,11 @@ export default function ExportDialog({ period, onClose }: { period: RosterPeriod
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Periode</p>
             <div className="flex flex-wrap items-center gap-2">
-              <input type="date" value={range.from} min={start} max={end}
+              <input type="date" value={range.from}
                 onChange={e => setRange({ ...range, from: e.target.value })}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:border-salmon-400" />
               <span className="text-xs text-gray-400">t/m</span>
-              <input type="date" value={range.to} min={start} max={end}
+              <input type="date" value={range.to}
                 onChange={e => setRange({ ...range, to: e.target.value })}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:border-salmon-400" />
             </div>
@@ -72,6 +99,13 @@ export default function ExportDialog({ period, onClose }: { period: RosterPeriod
                   isWholeMonth ? 'border-salmon-300 bg-salmon-50 text-salmon-500' : 'border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300'
                 }`}>
                 Hele maand
+              </button>
+              <button onClick={() => setRange(payroll)}
+                title={`Loonperiode: ${PAYROLL_START_DAY}e van de vorige maand t/m de ${PAYROLL_END_DAY}e`}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                  isPayroll ? 'border-salmon-300 bg-salmon-50 text-salmon-500' : 'border-gray-200 text-gray-500 hover:text-dark hover:border-gray-300'
+                }`}>
+                Loonperiode ({PAYROLL_START_DAY} t/m {PAYROLL_END_DAY})
               </button>
               {todayInMonth && (
                 <button onClick={() => setRange({ from: start, to: today })}
@@ -83,6 +117,11 @@ export default function ExportDialog({ period, onClose }: { period: RosterPeriod
                 </button>
               )}
             </div>
+            <p className="text-xs text-gray-400 mt-2.5">
+              {range.from && range.to && range.to >= range.from
+                ? `Alle goedgekeurde diensten van ${describeRange(range)}, ook buiten ${monthLabel(period.year, period.month)}.`
+                : 'Kies een geldig datumbereik.'}
+            </p>
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Download</p>
