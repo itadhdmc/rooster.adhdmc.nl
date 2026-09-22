@@ -94,9 +94,16 @@ SELECT COALESCE(p.full_name, p.email)                                        AS 
        -- van de eindmaand.
        ROUND(COALESCE(SUM(t.verloond) FILTER (
          WHERE t.shift_date >= DATE_TRUNC('month', (SELECT tot FROM bereik))::date), 0), 2) AS oude_export_uren,
-       -- Het verschil: de uren die niet verloond zijn.
+       -- Het verschil: de uren die niet verloond zijn. Gesplitst, want op
+       -- de toeslagdagen zit een andere beloning dan op doordeweekse dagen.
        ROUND(COALESCE(SUM(t.verloond) FILTER (
-         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date), 0), 2)  AS gemist_door_oude_export
+         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date), 0), 2)  AS gemist_door_oude_export,
+       ROUND(COALESCE(SUM(t.verloond) FILTER (
+         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date
+           AND NOT t.toeslagdag), 0), 2)                                                    AS gemist_doordeweeks,
+       ROUND(COALESCE(SUM(t.verloond) FILTER (
+         WHERE t.shift_date < DATE_TRUNC('month', (SELECT tot FROM bereik))::date
+           AND t.toeslagdag), 0), 2)                                                        AS gemist_toeslagdag
 FROM dagtotaal t
 JOIN profiles p ON p.id = t.user_id
 LEFT JOIN ziek z ON z.user_id = t.user_id
